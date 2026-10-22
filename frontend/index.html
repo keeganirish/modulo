@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Analyze your flowchart locally with deterministic vision, OCR, and graph validation.">
+<title>Modulo — Flowchart to code</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%231f6f64'/%3E%3Cpath d='M10 27V13l10 10 10-10v14' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/styles.css">
+<script type="module" src="/js/app.js">
+</script>
+</head>
+<body>
+<a class="skip-link" href="#workspace">Skip to workspace</a>
+<header class="header">
+<a class="brand" href="/" aria-label="Modulo home">
+<span class="brand-mark" aria-hidden="true">M<span>↗</span>
+</span>
+<span>modulo<span class="brand-caption">FLOWCHART TO CODE</span>
+</span>
+</a>
+<div class="header-tools">
+<button id="help-button" class="button quiet">Diagram guide</button>
+<button id="theme-button" class="button quiet" aria-pressed="false">Dark theme</button>
+</div>
+</header>
+<main>
+<section class="intro">
+<div>
+<p class="eyebrow">YOUR LOGIC. CLEARLY TRANSLATED.</p>
+<h1>From flowchart to understanding.</h1>
+<p>Import a completed diagram. Check what Modulo recognizes. Stay in control of every step.</p>
+</div>
+<span class="stage-tag">BUILD 01 / ANALYSIS</span>
+</section>
+<ol class="steps" aria-label="Conversion steps">
+<li id="step-upload" aria-current="step">
+<span>01</span> Import flowchart</li>
+<li id="step-review">
+<span>02</span> Review recognition</li>
+<li class="future">
+<span>03</span> Approve logic <small>Coming next</small>
+</li>
+<li class="future">
+<span>04</span> Generate Python <small>Coming next</small>
+</li>
+</ol>
+<section class="upload-bar" aria-labelledby="upload-heading">
+<div id="drop-zone" class="drop-zone">
+<div class="upload-symbol" aria-hidden="true">↑</div>
+<div>
+<h2 id="upload-heading">Bring your own flowchart</h2>
+<p id="file-description">Drop a PNG, JPG, or single-page PDF · Up to 10 MB</p>
+<p id="file-error" class="error-text" role="alert">
+</p>
+</div>
+<input id="file-input" type="file" accept=".png,.jpg,.jpeg,.pdf" class="sr-only" aria-label="Choose flowchart">
+<button id="choose-button" class="button">Choose file</button>
+</div>
+<div class="upload-actions">
+<button id="sample-button" class="button quiet">Try a sample</button>
+<button id="analyze-button" class="button primary" disabled>Analyze flowchart →</button>
+<button id="cancel-button" class="button" hidden>Cancel request</button>
+</div>
+</section>
+<div class="status-row">
+<p id="status" role="status" aria-live="polite">Choose a file to begin. Your diagram stays on this server.</p>
+</div>
+<div id="progress-wrap" hidden>
+<label id="progress-label" for="progress">Uploading</label>
+<progress id="progress" max="100" value="0">
+</progress>
+</div>
+<section id="workspace" class="workspace" tabindex="-1" aria-label="Analysis workspace">
+<article class="panel diagram-panel">
+<header class="panel-heading">
+<div>
+<span class="panel-number">01</span>
+<h2>Flowchart</h2>
+</div>
+<span id="node-count" class="panel-badge">SOURCE</span>
+</header>
+<div id="diagram-empty" class="empty-state">
+<span class="empty-shape" aria-hidden="true">
+</span>
+<h3>Your diagram belongs here</h3>
+<p>Import any digitally drawn flowchart with dark lines on a light background. Samples are optional demonstrations only.</p>
+<button id="empty-choose" class="button quiet">Choose a flowchart →</button>
+</div>
+<div id="diagram-scroll" class="diagram-scroll" hidden>
+<div id="diagram-frame" class="diagram-frame">
+<img id="diagram-image" alt="Imported flowchart">
+<svg id="diagram-overlay" xmlns="http://www.w3.org/2000/svg" aria-label="Recognized shapes and arrows">
+</svg>
+</div>
+</div>
+<footer class="panel-footer">Hover or focus a recognized shape to inspect it. Click to pin.</footer>
+</article>
+<article class="panel">
+<header class="panel-heading">
+<div>
+<span class="panel-number">02</span>
+<h2>Pseudocode</h2>
+</div>
+<span id="pseudo-mode" class="panel-badge">READ ONLY</span>
+</header>
+<div id="pseudo-empty" class="empty-state">
+<span class="empty-lines" aria-hidden="true">≡</span>
+<h3>Review the recovered logic</h3>
+<p>Modulo renders this read-only explanation from the validated graph before it generates Python.</p>
+</div>
+<div id="recognition" class="recognition" hidden>
+<h3>Recognized elements</h3>
+<p id="review-hint" class="review-hint" hidden>Only flagged OCR text and branch labels can be edited. Corrections are revalidated before approval.</p>
+<div id="node-list" class="node-list" aria-label="Recognized pseudocode nodes">
+</div>
+<details>
+<summary>Detected connections</summary>
+<div id="edge-list">
+</div>
+</details>
+</div>
+<footer class="panel-footer">
+<button id="review-button" class="button action-button" hidden>Edit flagged regions</button>
+<button id="revalidate-button" class="button primary" hidden>Revalidate corrections</button>
+<button id="approve-button" class="button primary" disabled>Approve pseudocode</button>
+</footer>
+</article>
+<article class="panel">
+<header class="panel-heading">
+<div>
+<span class="panel-number">03</span>
+<h2>Python</h2>
+</div>
+<span class="panel-badge">AFTER APPROVAL</span>
+</header>
+<div id="code-empty" class="empty-state">
+<span class="empty-code" aria-hidden="true">&lt;/&gt;</span>
+<h3>Nothing generated without you</h3>
+<p>Approve the read-only pseudocode first. Generated text is parsed and syntax-checked, never executed.</p>
+</div>
+<pre id="code-list" class="code-list" hidden></pre>
+<footer class="panel-footer">
+<button id="copy-button" class="button action-button" disabled>Copy</button>
+<button id="download-button" class="button action-button" disabled>Download .py</button>
+</footer>
+</article>
+</section>
+<section class="diagnostics" aria-labelledby="diagnostics-heading">
+<header>
+<div>
+<h2 id="diagnostics-heading">Analysis notes</h2>
+<p id="diagnostics-summary">Issues will include what happened, where, and how to fix it.</p>
+</div>
+<span id="diagnostics-count" class="panel-badge">NO ANALYSIS YET</span>
+</header>
+<div id="diagnostics-list">
+</div>
+</section>
+<footer class="site-footer">
+<span>MODULO / West Texas System Solutions</span>
+</footer>
+</main>
+<dialog id="guide-dialog" aria-labelledby="guide-heading">
+<header>
+<h2 id="guide-heading">A diagram Modulo can read</h2>
+<button id="close-guide" class="button">Close</button>
+</header>
+<p>Use a digitally exported, single-page diagram. Keep shapes separate, text legible, and arrowheads visible. Photographs and hand-drawn diagrams are not supported.</p>
+<dl>
+<dt>Rounded rectangle</dt>
+<dd>Exactly one <code>Start</code> and at least one <code>End</code>.</dd>
+<dt>Rectangle</dt>
+<dd>A safe assignment such as <code>total = total + n</code>.</dd>
+<dt>Parallelogram</dt>
+<dd>
+<code>Input n:int</code> or <code>Output total</code>.</dd>
+<dt>Diamond / hexagon</dt>
+<dd>A condition / <code>WHILE n &gt; 0</code> or <code>FOR i IN range(5)</code>. Two outgoing arrows, labeled Yes and No.</dd>
+<dt>Small circle</dt>
+<dd>Exactly two circles with the same connector label.</dd>
+</dl>
+<p>If recognition is uncertain, fix the source and upload again. Modulo does not guess missing directions or labels.</p>
+<p><strong>Recognition details:</strong> Each recognized element lists its original OCR text, OpenCV shape classification, and Tesseract confidence so you can compare the result with the source diagram before approving it.</p>
+<p>
+<strong>This build:</strong> intake, vision, graph, validation, logic recovery, pseudocode review, approval, Python generation, and traceability.</p>
+</dialog>
+</body>
+</html>
