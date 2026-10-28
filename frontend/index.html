@@ -38,24 +38,24 @@
 <span>01</span> Import flowchart</li>
 <li id="step-review">
 <span>02</span> Review recognition</li>
-<li class="future">
-<span>03</span> Approve logic <small>Coming next</small>
+<li>
+<span>03</span> Approve logic
 </li>
-<li class="future">
-<span>04</span> Generate Python <small>Coming next</small>
+<li>
+<span>04</span> Generate Python
 </li>
 </ol>
 <section class="upload-bar" aria-labelledby="upload-heading">
 <div id="drop-zone" class="drop-zone">
-<div class="upload-symbol" aria-hidden="true">↑</div>
+<div class="upload-symbol" aria-hidden="true">↥</div>
 <div>
 <h2 id="upload-heading">Bring your own flowchart</h2>
-<p id="file-description">Drop a PNG, JPG, or single-page PDF · Up to 10 MB</p>
+<p id="file-description">Drop a PNG, JPG, SVG, or single-page PDF · Up to 10 MB</p>
 <p id="file-error" class="error-text" role="alert">
 </p>
 </div>
-<input id="file-input" type="file" accept=".png,.jpg,.jpeg,.pdf" class="sr-only" aria-label="Choose flowchart">
-<button id="choose-button" class="button">Choose file</button>
+<input id="file-input" type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="sr-only" aria-label="Choose flowchart">
+<button id="choose-button" class="button">Choose flowchart</button>
 </div>
 <div class="upload-actions">
 <button id="sample-button" class="button quiet">Try a sample</button>
@@ -84,7 +84,7 @@
 <span class="empty-shape" aria-hidden="true">
 </span>
 <h3>Your diagram belongs here</h3>
-<p>Import any digitally drawn flowchart with dark lines on a light background. Samples are optional demonstrations only.</p>
+<p>Drop or choose a flowchart image here. Digital exports are easiest to read; photographs and hand-drawn diagrams are supported with a higher risk of OCR or shape errors.</p>
 <button id="empty-choose" class="button quiet">Choose a flowchart →</button>
 </div>
 <div id="diagram-scroll" class="diagram-scroll" hidden>
@@ -94,7 +94,7 @@
 </svg>
 </div>
 </div>
-<footer class="panel-footer">Hover or focus a recognized shape to inspect it. Click to pin.</footer>
+<footer class="panel-footer">After analysis, hover or focus a recognized shape to inspect it; click to pin its matching pseudocode and Python lines.</footer>
 </article>
 <article class="panel">
 <header class="panel-heading">
@@ -129,7 +129,7 @@
 <article class="panel">
 <header class="panel-heading">
 <div>
-<span class="panel-number">03</span>
+<span class="panel-number">04</span>
 <h2>Python</h2>
 </div>
 <span class="panel-badge">AFTER APPROVAL</span>
@@ -166,17 +166,19 @@
 <h2 id="guide-heading">A diagram Modulo can read</h2>
 <button id="close-guide" class="button">Close</button>
 </header>
-<p>Use a digitally exported, single-page diagram. Keep shapes separate, text legible, and arrowheads visible. Photographs and hand-drawn diagrams are not supported.</p>
+<p>Use a single-page diagram with separate shapes, legible text, and visible arrowheads. Digital exports are easiest to read. Photographs and hand-drawn diagrams are supported, but lighting, perspective, paper texture, and handwriting increase the risk of an incorrect interpretation.</p>
 <dl>
-<dt>Rounded rectangle</dt>
-<dd>Exactly one <code>Start</code> and at least one <code>End</code>.</dd>
+<dt>Terminal: rounded rectangle or oval</dt>
+<dd>Use for <code>Start</code> and <code>End</code>. Modulo accepts either common terminal style.</dd>
 <dt>Rectangle</dt>
 <dd>A safe assignment such as <code>total = total + n</code>.</dd>
 <dt>Parallelogram</dt>
 <dd>
 <code>Input n:int</code> or <code>Output total</code>.</dd>
-<dt>Diamond / hexagon</dt>
-<dd>A condition / <code>WHILE n &gt; 0</code> or <code>FOR i IN range(5)</code>. Two outgoing arrows, labeled Yes and No.</dd>
+<dt>Diamond</dt>
+<dd>A condition such as <code>n &gt; 0?</code>. Two outgoing arrows, labeled Yes and No.</dd>
+<dt>Hexagon</dt>
+<dd>A preparation or iteration header such as <code>WHILE n &gt; 0</code> or <code>FOR i IN range(5)</code>; it is not treated as a condition diamond.</dd>
 <dt>Small circle</dt>
 <dd>Exactly two circles with the same connector label.</dd>
 </dl>

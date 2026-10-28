@@ -251,6 +251,8 @@ p {
   flex-wrap:wrap
 }
 .drop-zone {
+  cursor:pointer;
+  transition:border-color .15s ease,background .15s ease,box-shadow .15s ease
   display:flex;
   align-items:center;
   gap:14px;
@@ -259,6 +261,11 @@ p {
   border:1px dashed transparent;
   border-radius:7px;
   padding:3px
+}
+.drop-zone:hover,.drop-zone:focus-within {
+  border-color:var(--accent);
+  background:var(--accent-soft);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)
 }
 .drop-zone.dragging {
   border-color:var(--accent);
@@ -408,6 +415,10 @@ progress {
 .empty-lines,.empty-code {
   font:32px ui-monospace,monospace;
   color:var(--line);
+  line-height:1.5
+}
+.diagram-panel .panel-footer {
+  font-size:12px;
   line-height:1.5
 }
 .panel-footer {
@@ -738,6 +749,8 @@ code {
     padding:12px
   }
   .drop-zone {
+  cursor:pointer;
+  transition:border-color .15s ease,background .15s ease,box-shadow .15s ease
     min-width:0;
     gap:8px;
     width:100%

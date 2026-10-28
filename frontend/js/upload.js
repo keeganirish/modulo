@@ -1,6 +1,6 @@
 export function validateFile(file, maxMB = 10) {
   if (!file) return 'Choose a file first.';
-  if (!/\.(png|jpe?g|pdf)$/i.test(file.name)) return 'Use a PNG, JPG, or single-page PDF file.';
+  if (!/\.(png|jpe?g|svg|pdf)$/i.test(file.name)) return 'Use a PNG, JPG, SVG, or single-page PDF file.';
   if (!file.size) return 'This file is empty. Export the diagram again.';
   if (file.size > maxMB * 1024 * 1024) return `This file is too large. Choose a file under ${maxMB} MB.`;
   return null;
@@ -8,7 +8,12 @@ export function validateFile(file, maxMB = 10) {
 export function bindUpload(onSelect) {
   const input = document.getElementById('file-input');
   const zone = document.getElementById('drop-zone');
-  for (const id of ['choose-button', 'empty-choose']) document.getElementById(id).addEventListener('click', () => input.click());
+  for (const id of ['choose-button', 'empty-choose']) document.getElementById(id).addEventListener('click', event => { event.stopPropagation(); input.click(); });
+  zone.setAttribute('role', 'button');
+  zone.setAttribute('tabindex', '0');
+  zone.setAttribute('aria-label', 'Drop a flowchart here or choose a file');
+  zone.addEventListener('click', event => { if (!event.target.closest('button, input')) input.click(); });
+  zone.addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('button')) { event.preventDefault(); input.click(); } });
   input.addEventListener('change', () => { if (input.files[0]) onSelect(input.files[0]); });
   zone.addEventListener('dragover', event => { event.preventDefault(); zone.classList.add('dragging'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));

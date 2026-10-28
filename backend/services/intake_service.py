@@ -16,19 +16,38 @@ class UploadError(ValueError):
 
 def inspect_upload(data: bytes, filename: str, settings: Settings) -> str:
     extension = Path(filename).suffix.lower().lstrip(".")
-    if extension not in settings.ALLOWED_EXTENSIONS or extension not in ("png", "jpg", "jpeg", "pdf"):
-        raise UploadError("UNSUPPORTED_FILE_TYPE", "Choose a PNG, JPG, or single-page PDF.", 415)
+    if extension not in settings.ALLOWED_EXTENSIONS or extension not in ("png", "jpg", "jpeg", "pdf", "svg"):
+        raise UploadError("UNSUPPORTED_FILE_TYPE", "Choose a PNG, JPG, JPEG, SVG, or single-page PDF.", 415)
     if not data:
         raise UploadError("EMPTY_FILE", "The file is empty. Export your diagram again.")
     if len(data) > settings.max_upload_bytes:
         raise UploadError("FILE_TOO_LARGE", f"Choose a file no larger than {settings.MAX_UPLOAD_MB} MB.", 413)
-    expected = "pdf" if data.startswith(b"%PDF-") else "png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "jpg" if data.startswith(b"\xff\xd8\xff") else None
+    normalized = data.lstrip().lower()
+    expected = "pdf" if data.startswith(b"%PDF-") else "png" if data.startswith(b"\x89PNG\r\n\x1a\n") else "jpg" if data.startswith(b"\xff\xd8\xff") else "svg" if (normalized.startswith(b"<svg") or (normalized.startswith(b"<?xml") and b"<svg" in normalized[:4096])) else None
     claimed = "jpg" if extension == "jpeg" else extension
     if expected != claimed:
-        raise UploadError("CONTENT_TYPE_MISMATCH", "The contents do not match the filename. Export a genuine PNG, JPG, or PDF.", 415)
+        raise UploadError("CONTENT_TYPE_MISMATCH", "The contents do not match the filename. Export a genuine PNG, JPG, JPEG, SVG, or PDF.", 415)
     return claimed
 
 def decode_page(data: bytes, kind: str, settings: Settings) -> np.ndarray:
+    if kind == "svg":
+        if b"<script" in data.lower() or b"<!entity" in data.lower():
+            raise UploadError("UNSAFE_SVG", "This SVG contains active or external content. Export a plain SVG diagram.")
+        try:
+            with pymupdf.open(stream=data, filetype="svg") as document:
+                if document.page_count != 1:
+                    raise UploadError("MULTIPAGE_SVG", "Only one SVG page is supported.")
+                page = document[0]
+                scale = settings.PDF_RENDER_DPI / 72
+                if page.rect.width * page.rect.height * scale * scale > settings.MAX_IMAGE_PIXELS:
+                    raise UploadError("IMAGE_TOO_LARGE", "This SVG is too large to rasterize. Export a smaller diagram.", 413)
+                pixmap = page.get_pixmap(matrix=pymupdf.Matrix(scale, scale), colorspace=pymupdf.csRGB, alpha=False)
+                rgb = np.frombuffer(pixmap.samples, dtype=np.uint8).reshape(pixmap.height, pixmap.width, 3)
+                return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        except UploadError:
+            raise
+        except (RuntimeError, ValueError) as error:
+            raise UploadError("INVALID_SVG", "This SVG cannot be opened. Export it again.") from error
     if kind == "pdf":
         try:
             with pymupdf.open(stream=data, filetype="pdf") as document:
@@ -83,9 +102,9 @@ class IntakeService:
             context.grayscale = cv2.cvtColor(context.page_image, cv2.COLOR_BGR2GRAY)
             _, context.binary = cv2.threshold(context.grayscale, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
             if np.count_nonzero(context.binary) / context.binary.size > .45:
-                context.diagnose("error", "UNSUPPORTED_BACKGROUND", "The diagram does not have dark lines on a light background.", "Export a clean diagram on white; photographs are not supported.")
+                context.diagnose("error", "UNSUPPORTED_BACKGROUND", "The diagram does not have dark lines on a light background.", "Use a light background with visible lines; photographs and hand-drawn diagrams may be harder to read.")
         except UploadError as error:
-            context.diagnose("error", error.code, error.message, "Choose a new export of the original digitally drawn diagram.")
+            context.diagnose("error", error.code, error.message, "Choose a new export of the original diagram, or try a clearer photo/scan.")
         return context
 
 def run(context: PipelineContext) -> PipelineContext:

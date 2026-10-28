@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 from backend.app import create_app
 from tests.drawing import encode, sequence
+from tests.test_intake import SVG_FLOWCHART
 
 @pytest.fixture
 def client(settings):
@@ -59,3 +60,9 @@ def test_cross_origin_request_rejected(client):
 
 def test_bad_json_request(client):
     assert client.post("/api/generate",data="{broken",content_type="application/json").status_code==400
+
+
+def test_svg_upload_is_accepted(client):
+    response = client.post("/api/analyze", data={"file": (BytesIO(SVG_FLOWCHART), "diagram.svg")})
+    assert response.status_code == 200, response.json
+    assert response.json["page"]["width"] > 0
