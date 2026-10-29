@@ -335,10 +335,3 @@ AI-assisted tools used by Kaleb for coding and documentation help:
 | Claude | claude.ai |
 | Manus (Manus Studio) | manus.im |
 | Cursor (for the time being) | cursor.com |
-
-Ground rules when using these tools:
-
-- They are development aids only. Modulo itself uses no AI models or external services, and none of these tools are called by the application.
-- AI-suggested code is reviewed like any other code: you understand it, tests pass, and it goes through a PR.
-- Never paste private data, credentials, or user-uploaded flowcharts into these tools.
-- Follow the course's policy on AI tool use and disclosure. If unsure, ask the instructor, and mention the tools in the Stage 3 report if required.
