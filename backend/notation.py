@@ -20,6 +20,19 @@ class NotationError(ValueError):
 def normalize_label(text: str | None) -> str | None:
     return BRANCH_LABELS.get((text or "").strip().casefold())
 
+def normalize_condition(text: str) -> str:
+    """Accept natural flowchart decision labels such as `if x % 2 == 0`.
+
+    A diamond represents a condition, not a Python compound-statement block, so
+    strip an optional leading `if` and trailing colon before parsing/rendering.
+    """
+    condition = text.strip()
+    if re.match(r"^if\s+", condition, re.IGNORECASE):
+        condition = re.sub(r"^if\s+", "", condition, count=1, flags=re.IGNORECASE).strip()
+    if condition.endswith(":"):
+        condition = condition[:-1].rstrip()
+    return condition
+
 def safe_name(name: str) -> bool:
     return bool(NAME.fullmatch(name)) and "__" not in name and name not in SAFE_BUILTINS and not keyword.iskeyword(name)
 
@@ -71,7 +84,7 @@ def validate_node_text(kind: str, text: str) -> None:
             raise NotationError("Use Output followed by an expression.")
         validate_ast(text.split(None, 1)[1])
     elif kind == "decision":
-        validate_ast(text)
+        validate_ast(normalize_condition(text))
     elif kind == "iteration":
         if text.upper().startswith("WHILE "):
             validate_ast(text.split(None, 1)[1])

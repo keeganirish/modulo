@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import networkx as nx
 from backend.models import Edge, FlowGraph, IRNode, Node, PipelineContext
-from backend.notation import FOR, INPUT, normalize_label
+from backend.notation import FOR, INPUT, normalize_condition, normalize_label
 
 class LogicService:
     name = "logic"
@@ -119,7 +119,7 @@ class LogicService:
                     continue
                 then = self._sequence(yes.target, merge, nodes, outgoing, graph, dominators, post, emitted, context)
                 otherwise = self._sequence(no.target, merge, nodes, outgoing, graph, dominators, post, emitted, context)
-                result.append(IRNode("If", [cursor], condition=node.text.strip(), children=then, otherwise=otherwise))
+                result.append(IRNode("If", [cursor], condition=normalize_condition(node.text), children=then, otherwise=otherwise))
                 emitted.add(cursor); cursor = merge
                 continue
             result.append(self._leaf(node)); emitted.add(cursor)
