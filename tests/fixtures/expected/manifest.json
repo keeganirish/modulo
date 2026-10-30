@@ -1,0 +1,547 @@
+{
+  "simple_sequence": {
+    "image": "simple_sequence.png",
+    "tags": [
+      "sequence"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "process",
+        "text": "x = 1"
+      },
+      {
+        "id": "n3",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/simple_sequence.txt"
+  },
+  "input_output": {
+    "image": "input_output.png",
+    "tags": [
+      "input_output"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "data",
+        "text": "Input n"
+      },
+      {
+        "id": "n3",
+        "type": "data",
+        "text": "Print n"
+      },
+      {
+        "id": "n4",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      },
+      {
+        "source": "n3",
+        "target": "n4",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/input_output.txt"
+  },
+  "decision": {
+    "image": "decision.png",
+    "tags": [
+      "decision",
+      "branch_labels"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "data",
+        "text": "Input n"
+      },
+      {
+        "id": "n3",
+        "type": "decision",
+        "text": "n > 0?"
+      },
+      {
+        "id": "n4",
+        "type": "process",
+        "text": "Print Positive"
+      },
+      {
+        "id": "n5",
+        "type": "process",
+        "text": "Print Other"
+      },
+      {
+        "id": "n6",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      },
+      {
+        "source": "n3",
+        "target": "n4",
+        "label": "Yes"
+      },
+      {
+        "source": "n3",
+        "target": "n5",
+        "label": "No"
+      },
+      {
+        "source": "n4",
+        "target": "n6",
+        "label": null
+      },
+      {
+        "source": "n5",
+        "target": "n6",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/decision.txt"
+  },
+  "nested_branches": {
+    "image": "nested_branches.png",
+    "tags": [
+      "decision",
+      "nested_branches"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "decision",
+        "text": "A?"
+      },
+      {
+        "id": "n3",
+        "type": "decision",
+        "text": "B?"
+      },
+      {
+        "id": "n4",
+        "type": "process",
+        "text": "One"
+      },
+      {
+        "id": "n5",
+        "type": "process",
+        "text": "Two"
+      },
+      {
+        "id": "n6",
+        "type": "process",
+        "text": "Three"
+      },
+      {
+        "id": "n7",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": "Yes"
+      },
+      {
+        "source": "n2",
+        "target": "n6",
+        "label": "No"
+      },
+      {
+        "source": "n3",
+        "target": "n4",
+        "label": "Yes"
+      },
+      {
+        "source": "n3",
+        "target": "n5",
+        "label": "No"
+      },
+      {
+        "source": "n4",
+        "target": "n7",
+        "label": null
+      },
+      {
+        "source": "n5",
+        "target": "n7",
+        "label": null
+      },
+      {
+        "source": "n6",
+        "target": "n7",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/nested_branches.txt"
+  },
+  "loop": {
+    "image": "loop.png",
+    "tags": [
+      "loop",
+      "decision"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "process",
+        "text": "i = 0"
+      },
+      {
+        "id": "n3",
+        "type": "decision",
+        "text": "i < 3?"
+      },
+      {
+        "id": "n4",
+        "type": "process",
+        "text": "i = i + 1"
+      },
+      {
+        "id": "n5",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      },
+      {
+        "source": "n3",
+        "target": "n4",
+        "label": "Yes"
+      },
+      {
+        "source": "n4",
+        "target": "n3",
+        "label": null
+      },
+      {
+        "source": "n3",
+        "target": "n5",
+        "label": "No"
+      }
+    ],
+    "expected_pseudocode": "See expected/loop.txt"
+  },
+  "crossings": {
+    "image": "crossings.png",
+    "tags": [
+      "crossing",
+      "connectors"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "process",
+        "text": "Left"
+      },
+      {
+        "id": "n3",
+        "type": "process",
+        "text": "Right"
+      },
+      {
+        "id": "n4",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n1",
+        "target": "n3",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n4",
+        "label": null
+      },
+      {
+        "source": "n3",
+        "target": "n4",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/crossings.txt"
+  },
+  "long_connectors": {
+    "image": "long_connectors.png",
+    "tags": [
+      "long_connectors"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "process",
+        "text": "Do work"
+      },
+      {
+        "id": "n3",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/long_connectors.txt"
+  },
+  "small_text": {
+    "image": "small_text.png",
+    "tags": [
+      "small_text"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "process",
+        "text": "total = total + 1"
+      },
+      {
+        "id": "n3",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/small_text.txt"
+  },
+  "math_operators": {
+    "image": "math_operators.png",
+    "tags": [
+      "math_operators"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "data",
+        "text": "Input a, b"
+      },
+      {
+        "id": "n3",
+        "type": "process",
+        "text": "c = a * b + 2"
+      },
+      {
+        "id": "n4",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      },
+      {
+        "source": "n3",
+        "target": "n4",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/math_operators.txt"
+  },
+  "colored_background": {
+    "image": "colored_background.png",
+    "tags": [
+      "colored_background"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "process",
+        "text": "Count = 0"
+      },
+      {
+        "id": "n3",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/colored_background.txt"
+  },
+  "low_resolution": {
+    "image": "low_resolution.png",
+    "tags": [
+      "low_resolution"
+    ],
+    "nodes": [
+      {
+        "id": "n1",
+        "type": "terminal",
+        "text": "Start"
+      },
+      {
+        "id": "n2",
+        "type": "process",
+        "text": "x = x + 1"
+      },
+      {
+        "id": "n3",
+        "type": "terminal",
+        "text": "End"
+      }
+    ],
+    "edges": [
+      {
+        "source": "n1",
+        "target": "n2",
+        "label": null
+      },
+      {
+        "source": "n2",
+        "target": "n3",
+        "label": null
+      }
+    ],
+    "expected_pseudocode": "See expected/low_resolution.txt"
+  }
+}
