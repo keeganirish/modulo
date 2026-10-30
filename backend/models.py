@@ -34,10 +34,12 @@ class Node:
     flags: list[str] = field(default_factory=list)
     polygon: list[tuple[int, int]] = field(default_factory=list)
     words: list[OCRWord] = field(default_factory=list)
+    ocr_candidates: list[dict[str, Any]] = field(default_factory=list)
     def to_dict(self) -> dict:
         return {"id": self.id, "type": self.type, "text": self.text, "bbox": self.bbox.to_list(),
                 "confidence": round(self.confidence, 4), "flags": self.flags,
-                "polygon": self.polygon, "words": [word.to_dict() for word in self.words]}
+                "polygon": self.polygon, "words": [word.to_dict() for word in self.words],
+                "ocr_candidates": self.ocr_candidates}
 
 @dataclass
 class Arrow:

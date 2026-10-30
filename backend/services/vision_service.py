@@ -121,23 +121,110 @@ def read_words(image: np.ndarray, context: PipelineContext, psm: int, origin: tu
     return "\n".join(" ".join(line) for line in lines.values()), words
 
 
-def read_best_words(image: np.ndarray, context: PipelineContext, origin: tuple[int, int] = (0, 0)) -> tuple[str, list[OCRWord]]:
-    """Try normal and adaptive contrast; colored fills often need local thresholding."""
-    variants = [image]
-    if min(image.shape[:2]) >= 35:
-        variants.append(cv2.adaptiveThreshold(image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                              cv2.THRESH_BINARY, 31, 8))
-        _, otsu = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        variants.extend((otsu, 255 - otsu))
-    candidates=[]
+def preprocess_ocr_candidates(image: np.ndarray, shape_type: str = "unknown") -> list[np.ndarray]:
+    """Create conservative, complementary OCR inputs; the original is always first."""
+    if image is None or image.size == 0:
+        return []
+    gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    # Scale small glyphs without changing their proportions. Cubic interpolation is
+    # gentler on punctuation than binary morphology or nearest-neighbour scaling.
+    min_dim = min(gray.shape[:2])
+    scale = 3.0 if min_dim < 24 else 2.0 if min_dim < 48 else 1.5 if min_dim < 80 else 1.0
+    if scale > 1:
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+    variants = [gray]
+    # Local contrast and mild denoising preserve thin strokes and decimal points.
+    clahe = cv2.createCLAHE(clipLimit=2.0 if shape_type == "decision" else 1.7, tileGridSize=(8, 8)).apply(gray)
+    variants.append(clahe)
+    denoised = cv2.bilateralFilter(clahe, 5, 30, 30)
+    variants.append(denoised)
+    # Avoid aggressive thresholding on small labels and diamonds, where punctuation
+    # and diagonal strokes are especially easy to erase.
+    if min(gray.shape[:2]) >= 24:
+        block = min(31, min(gray.shape[:2]) if min(gray.shape[:2]) % 2 else min(gray.shape[:2]) - 1)
+        if block >= 11:
+            adaptive = cv2.adaptiveThreshold(clahe, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                            cv2.THRESH_BINARY, block, 7 if shape_type == "connector" else 5)
+            variants.append(adaptive)
+        _, otsu = cv2.threshold(clahe, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        variants.append(otsu)
+        # Inverted Otsu helps dark-filled shapes; include it only as a candidate.
+        if shape_type in {"decision", "data", "input", "output", "unknown"}:
+            variants.append(255 - otsu)
+    # De-duplicate exact images to avoid wasting Tesseract calls.
+    unique, seen = [], set()
     for variant in variants:
-        for psm in (6, 11):
+        key = (variant.shape, hash(variant.tobytes()))
+        if key not in seen:
+            seen.add(key); unique.append(variant)
+    return unique
+
+
+def _candidate_score(text: str, words: list[OCRWord], shape_type: str = "unknown") -> float:
+    """Rank readings by confidence plus character integrity, not length alone."""
+    cleaned = " ".join(text.split())
+    if not cleaned:
+        return -100.0
+    chars = [c for c in cleaned if not c.isspace()]
+    confidence = sum(w.confidence * max(1, len(w.text)) for w in words) / max(1, sum(max(1, len(w.text)) for w in words))
+    printable = sum(c.isprintable() for c in chars) / max(1, len(chars))
+    # Penalize common OCR debris but do not reject programming punctuation.
+    alnum = sum(c.isalnum() for c in chars)
+    symbols = sum(c in "= !%(),.'\"_+-*/<>:" for c in chars)
+    debris = sum(c in "|\\~`" for c in chars)
+    score = confidence * 5.0 + printable * 1.5 + min(alnum, 24) * .025 + min(symbols, 8) * .045 - debris * .18
+    if shape_type == "connector" and len(cleaned) > 18:
+        score -= (len(cleaned) - 18) * .04
+    if shape_type == "decision" and any(op in cleaned for op in ("==", "!=", "<=", ">=", "%")):
+        score += .15
+    return score
+
+
+def select_ocr_candidate(candidates: list[tuple[str, list[OCRWord]]], shape_type: str = "unknown") -> tuple[str, list[OCRWord], list[dict]]:
+    """Select a best reading and retain near-ties for uncertain downstream review."""
+    if not candidates:
+        return "", [], []
+    normalized_counts = {}
+    for text, _ in candidates:
+        normalized = " ".join(text.split()).casefold()
+        if normalized:
+            normalized_counts[normalized] = normalized_counts.get(normalized, 0) + 1
+    ranked = sorted(((_candidate_score(text, words, shape_type) +
+                      min(.24, .08 * max(0, normalized_counts.get(" ".join(text.split()).casefold(), 1) - 1)),
+                      text, words) for text, words in candidates), key=lambda item: item[0], reverse=True)
+    best_score, best_text, best_words = ranked[0]
+    plausible = []
+    seen = set()
+    low_confidence = not best_words or sum(w.confidence for w in best_words) / len(best_words) < .72
+    for score, text, words in ranked:
+        normalized = " ".join(text.split())
+        if normalized and normalized not in seen and (score >= best_score - .45 or (low_confidence and len(plausible) < 3)):
+            plausible.append({"text": normalized, "score": round(score, 3), "confidence": round(
+                sum(w.confidence for w in words) / len(words), 3) if words else 0.0})
+            seen.add(normalized)
+        if len(plausible) >= 3:
+            break
+    return best_text, best_words, plausible
+
+
+def read_best_words(image: np.ndarray, context: PipelineContext, origin: tuple[int, int] = (0, 0),
+                    shape_type: str = "unknown", return_candidates: bool = False):
+    """Compare original and shape-aware preprocessing variants using Tesseract."""
+    candidates = []
+    for variant in preprocess_ocr_candidates(image, shape_type):
+        for psm in ((10, 6) if shape_type == "connector" else (6, 11)):
             text, words = read_words(variant, context, psm, origin)
-            score = sum(max(0.0, word.confidence) * len(word.text) for word in words)
-            score += 2.0 if psm == 6 else 0.0
-            candidates.append((score, text, words))
-    _, text, words = max(candidates, key=lambda candidate: candidate[0], default=(0.0, "", []))
-    return text, words
+            scale_x = variant.shape[1] / max(1, image.shape[1])
+            scale_y = variant.shape[0] / max(1, image.shape[0])
+            if scale_x != 1 or scale_y != 1:
+                for word in words:
+                    box = word.bbox
+                    word.bbox = BoundingBox(origin[0] + round((box.x - origin[0]) / scale_x),
+                                             origin[1] + round((box.y - origin[1]) / scale_y),
+                                             max(1, round(box.width / scale_x)), max(1, round(box.height / scale_y)))
+            candidates.append((text, words))
+    text, words, plausible = select_ocr_candidate(candidates, shape_type)
+    return (text, words, plausible) if return_candidates else (text, words)
 
 
 class VisionService:
@@ -175,8 +262,7 @@ class VisionService:
                     # The contour bbox is already isolated from neighboring
                     # nodes. Keeping the full crop prevents the fill mask
                     # from erasing anti-aliased glyphs on solid-color nodes.
-                    text, words = (read_words(crop, context, 10, (x + left, y + top))
-                                   if geometry_kind == "connector" else read_best_words(crop, context, (x + left, y + top)))
+                    text, words, ocr_candidates = (read_best_words(crop, context, (x + left, y + top), geometry_kind, True))
                     text = re.sub(r"^\s*[/|\\]+\s*|\s*[/|\\]+\s*$", "", text).strip()
                     text = " ".join(text.split()).translate(str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'"}))
                     kind = geometry_kind
@@ -197,7 +283,7 @@ class VisionService:
                     confidence = sum(word.confidence * len(word.text) for word in words) / total if total else 0.0
                     polygon = cv2.approxPolyDP(contour, .002 * cv2.arcLength(contour, True), True).reshape(-1, 2)
                     node = Node(f"n{index}", kind, text, BoundingBox(x, y, width, height), confidence, flags,
-                                [(int(a), int(b)) for a, b in polygon], words)
+                                [(int(a), int(b)) for a, b in polygon], words, ocr_candidates)
                     context.elements.append(node)
                     cv2.drawContours(removal, [contour], -1, 255, cv2.FILLED)
                 # Filled-node contours already cover their interiors; do not

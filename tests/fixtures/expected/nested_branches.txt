@@ -1,0 +1,18 @@
+# Expected control-flow specification (not asserted as OCR output until baseline is reviewed)
+1. terminal: Start
+2. decision: A?
+3. decision: B?
+4. process: One
+5. process: Two
+6. process: Three
+7. terminal: End
+
+Directed edges:
+n1 -> n2
+n2 -> n3 [Yes]
+n2 -> n6 [No]
+n3 -> n4 [Yes]
+n3 -> n5 [No]
+n4 -> n7
+n5 -> n7
+n6 -> n7
