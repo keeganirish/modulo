@@ -1,0 +1,13 @@
+# Expected control-flow specification (not asserted as OCR output until baseline is reviewed)
+1. terminal: Start
+2. process: i = 0
+3. decision: i < 3?
+4. process: i = i + 1
+5. terminal: End
+
+Directed edges:
+n1 -> n2
+n2 -> n3
+n3 -> n4 [Yes]
+n4 -> n3
+n3 -> n5 [No]
