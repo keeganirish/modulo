@@ -1,0 +1,9 @@
+START
+INPUT number
+IF num < 0
+    OUTPUT "Factorial is not defined for negative numbers"
+ELSE
+    CALCULATE factorial
+    OUTPUT factorial
+END IF
+END

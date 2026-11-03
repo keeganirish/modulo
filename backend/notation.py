@@ -11,14 +11,29 @@ ALLOWED_AST_TYPES = (ast.Expression, ast.Module, ast.Assign, ast.AugAssign, ast.
     ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow, ast.UAdd, ast.USub, ast.Not,
     ast.And, ast.Or, ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)
 NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
-INPUT = re.compile(r"^Input\s+([A-Za-z][A-Za-z0-9_]*)(?::(int|float|str))?$", re.IGNORECASE)
+INPUT = re.compile(r"^Input\s+(?:variable\s*:\s*)?([A-Za-z][A-Za-z0-9_]*)(?::(int|float|str))?$", re.IGNORECASE)
 FOR = re.compile(r"^FOR\s+([A-Za-z][A-Za-z0-9_]*)\s+IN\s+(.+)$", re.IGNORECASE)
+# Small, explicit vocabulary of safe high-level operations that can be lowered to Python.
+FACTORIAL_COMMAND = re.compile(r"^calculate\s+(?:the\s+)?factorial(?:\s+of\s+([A-Za-z][A-Za-z0-9_]*))?$", re.IGNORECASE)
+
+def is_supported_natural_operation(text: str) -> bool:
+    """Whether a process label names a deterministic operation we implement."""
+    return bool(FACTORIAL_COMMAND.fullmatch(text.strip()))
 
 class NotationError(ValueError):
     pass
 
 def normalize_label(text: str | None) -> str | None:
-    return BRANCH_LABELS.get((text or "").strip().casefold())
+    """Normalize common branch-label OCR variants without guessing arbitrary text.
+
+    OCR frequently includes nearby punctuation (for example ``Yes.`` or ``No,``)
+    when a label is printed close to a connector. Strip only surrounding
+    punctuation/whitespace; keep the accepted vocabulary deliberately small.
+    """
+    value = (text or "").strip().casefold()
+    value = re.sub(r"^[\W_]+|[\W_]+$", "", value, flags=re.UNICODE)
+    value = re.sub(r"\s+", " ", value)
+    return BRANCH_LABELS.get(value)
 
 def normalize_condition(text: str) -> str:
     """Accept natural flowchart decision labels such as `if x % 2 == 0`.
@@ -94,7 +109,7 @@ def validate_node_text(kind: str, text: str) -> None:
                 raise NotationError("Use WHILE condition or FOR name IN expression.")
             validate_ast(match.group(2))
     elif kind == "process":
-        if text not in ("break", "continue", "return"):
+        if text not in ("break", "continue", "return") and not is_supported_natural_operation(text):
             validate_ast(text, "exec")
     else:
         raise NotationError("This shape is outside the supported notation.")

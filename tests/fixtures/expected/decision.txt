@@ -1,0 +1,15 @@
+# Expected control-flow specification (not asserted as OCR output until baseline is reviewed)
+1. terminal: Start
+2. data: Input n
+3. decision: n > 0?
+4. process: Print Positive
+5. process: Print Other
+6. terminal: End
+
+Directed edges:
+n1 -> n2
+n2 -> n3
+n3 -> n4 [Yes]
+n3 -> n5 [No]
+n4 -> n6
+n5 -> n6

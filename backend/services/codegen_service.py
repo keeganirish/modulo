@@ -6,7 +6,9 @@ runtime NameErrors (for example, Input Number followed by `number % 2 == 0`).
 """
 from __future__ import annotations
 import ast
+import re
 from backend.models import IRNode, PipelineContext, SourceLine
+from backend.notation import FACTORIAL_COMMAND
 
 _NUMERIC_BINOPS = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow)
 
@@ -26,6 +28,12 @@ class CodegenService:
         if context.ir is None or context.has_errors or not context.approved:
             return context
         names, input_types = self._analyze(context.ir)
+        if any(child.kind == "Process" and FACTORIAL_COMMAND.fullmatch(child.text.strip())
+               for child in self._walk_ir(context.ir)) and not getattr(self, "_factorial_operand", None):
+            context.diagnose("error", "AMBIGUOUS_FACTORIAL_INPUT",
+                             "Calculate factorial needs an explicit input variable when the flowchart has multiple inputs.",
+                             "Write 'Calculate factorial of name' or use a single input variable.")
+            return context
         body=[]
         self._render(context.ir, body, 1, names, input_types)
         body=[SourceLine(1,0,"def main():",[])]+[SourceLine(index+2,indent,text,ids) for index,(indent,text,ids) in enumerate(body)]
@@ -44,15 +52,22 @@ class CodegenService:
     def _analyze(self, root: IRNode):
         names: dict[str,str] = {}
         input_types: dict[str,str] = {}
+        explicit_input_types: set[str] = set()
         expressions: list[str] = []
+        factorial_input: str | None = None
+        input_variables: list[str] = []
         def define(name):
             if name:
                 names.setdefault(name.casefold(), name)
         def walk(node):
+            nonlocal factorial_input
             for child in node.children:
                 if child.kind == "Input":
                     define(child.variable)
+                    input_variables.append(child.variable)
                     input_types[child.variable.casefold()] = child.expression or "str"
+                    if child.text and re.search(r":\s*(?:int|float|str)\s*$", child.text, re.IGNORECASE):
+                        explicit_input_types.add(child.variable.casefold())
                 elif child.kind == "For":
                     define(child.variable); expressions.append(child.expression)
                 if child.kind in ("If", "While"):
@@ -61,29 +76,46 @@ class CodegenService:
                     expressions.append(child.expression)
                 elif child.kind == "Process":
                     expressions.append(child.text)
+                    match = FACTORIAL_COMMAND.fullmatch(child.text.strip())
+                    if match and match.group(1):
+                        factorial_input = match.group(1)
                 walk(child)
                 if child.otherwise:
                     walk(IRNode("Block", children=child.otherwise))
         walk(root)
-        # If an input participates in numeric arithmetic, treat an untyped input as int.
-        # Explicit input annotations (int/float/str) always take precedence.
+        # Infer integer input from arithmetic/comparisons with numeric literals, but
+        # never override an explicit :int/:float/:str annotation from the diagram.
         for expression in expressions:
             try:
                 tree = ast.parse(expression, mode="exec" if "=" in expression and "==" not in expression else "eval")
             except (SyntaxError, ValueError):
                 try: tree = ast.parse(expression, mode="eval")
                 except (SyntaxError, ValueError): continue
-            for operation in (n for n in ast.walk(tree) if isinstance(n, ast.BinOp) and isinstance(n.op, _NUMERIC_BINOPS)):
-                for item in ast.walk(operation):
-                    if isinstance(item, ast.Name) and item.id.casefold() in input_types:
-                        key = item.id.casefold()
-                        if input_types[key] == "str": input_types[key] = "int"
+            numeric_context = any(isinstance(n, (ast.BinOp, ast.Compare)) for n in ast.walk(tree))
+            if not numeric_context:
+                continue
+            numeric_names = {item.id.casefold() for item in ast.walk(tree) if isinstance(item, ast.Name)}
+            if "number" in input_types and "num" in numeric_names and "num" not in input_types:
+                numeric_names.add("number")
+            for key in numeric_names.intersection(input_types):
+                if key not in explicit_input_types and input_types[key] == "str":
+                    input_types[key] = "int"
+        # A command like "Calculate factorial" operates on the sole input when no
+        # operand is written. This is deterministic and avoids guessing with several inputs.
+        if factorial_input:
+            names.setdefault(factorial_input.casefold(), factorial_input)
+        self._factorial_operand = factorial_input or (input_variables[0] if len(input_variables) == 1 else None)
         return names, input_types
 
     def _normalize(self, text: str, names: dict[str,str], mode="eval") -> str:
         try:
             tree = ast.parse(text, mode=mode)
-            tree = _CanonicalNames(names).visit(tree)
+            canonical_names = dict(names)
+            # Common abbreviation in educational diagrams: "num" often refers to
+            # the input labelled "number". Apply only when unambiguous.
+            if "number" in names and "num" not in names:
+                canonical_names["num"] = names["number"]
+            tree = _CanonicalNames(canonical_names).visit(tree)
             ast.fix_missing_locations(tree)
             return ast.unparse(tree).strip()
         except (SyntaxError, ValueError):
@@ -93,7 +125,20 @@ class CodegenService:
         for child in node.children:
             ids=child.source_ids
             if child.kind=="Process":
-                lines.append((indent,self._normalize(child.text,names,"exec"),ids))
+                factorial_match = FACTORIAL_COMMAND.fullmatch(child.text.strip())
+                if factorial_match:
+                    operand = factorial_match.group(1) or getattr(self, "_factorial_operand", None)
+                    if operand:
+                        operand = names.get(operand.casefold(), operand)
+                        lines.append((indent, "factorial = 1", ids))
+                        lines.append((indent, f"for _factorial_index in range(1, {operand} + 1):", ids))
+                        lines.append((indent + 1, "factorial *= _factorial_index", ids))
+                    else:
+                        # Validation should have caught this ambiguous operation; keep
+                        # code generation defensive rather than silently choosing input.
+                        raise ValueError("Calculate factorial needs an explicit operand or exactly one input.")
+                else:
+                    lines.append((indent,self._normalize(child.text,names,"exec"),ids))
             elif child.kind=="Input":
                 variable=names.get(child.variable.casefold(),child.variable)
                 input_type=input_types.get(child.variable.casefold(),child.expression or "str")
@@ -114,6 +159,13 @@ class CodegenService:
                 lines.append((indent,f"for {variable} in {expression}:",ids)); self._render_block(child.children,lines,indent+1,names,input_types)
             elif child.kind in ("Start","End"):
                 continue
+
+    def _walk_ir(self, root):
+        for child in root.children:
+            yield child
+            yield from self._walk_ir(child)
+            if child.otherwise:
+                yield from self._walk_ir(IRNode("Block", children=child.otherwise))
 
     def _render_block(self,children,lines,indent,names,input_types):
         self._render(IRNode("Block",children=children),lines,indent,names,input_types)

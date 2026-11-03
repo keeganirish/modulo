@@ -29,7 +29,7 @@ def text(image, value, center, size=.7):
 def shape(image, kind, box, value):
     x, y, width, height = box
     if kind == "terminal":
-        radius = min(20, height // 2)
+        radius = height // 2  # capsule: the classifier treats small-radius rounded boxes as process
         cv2.line(image, (x + radius, y), (x + width - radius, y), (0, 0, 0), 2)
         cv2.line(image, (x + radius, y + height), (x + width - radius, y + height), (0, 0, 0), 2)
         cv2.line(image, (x, y + radius), (x, y + height - radius), (0, 0, 0), 2)

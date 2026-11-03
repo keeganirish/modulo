@@ -3,15 +3,85 @@ from collections import defaultdict
 import networkx as nx
 from backend.models import PipelineContext
 from backend.notation import NotationError, normalize_label, validate_node_text
+from backend.services.programming_ocr_validation import ProgrammingOCRValidationService
+
+def _reconcile_decision_labels(context: PipelineContext) -> None:
+    """Canonicalize OCR labels and recover only strongly supported missing pairs.
+
+    This runs immediately before validation as a last, conservative normalization
+    layer. It does not replace explicit Yes/No labels. If OCR captured one branch
+    label but missed the other, the missing counterpart is inferred only when the
+    two connector paths visibly depart from opposite sides of the same decision
+    and both lead downward to recognized nodes.
+    """
+    graph = context.graph
+    if graph is None:
+        return
+    nodes = {node.id: node for node in graph.nodes}
+    for decision in graph.nodes:
+        if decision.type not in ("decision", "iteration"):
+            continue
+        branches = [edge for edge in graph.edges if edge.source == decision.id]
+        if len(branches) != 2:
+            continue
+
+        # Normalize punctuation/case from OCR, e.g. "Yes." and "No,".
+        for edge in branches:
+            canonical = normalize_label(edge.label)
+            if canonical:
+                edge.label = canonical
+
+        labels = [normalize_label(edge.label) for edge in branches]
+        if sorted(label or "" for label in labels) == ["No", "Yes"]:
+            continue
+
+        # Only infer an omitted label, never overwrite two explicit conflicting
+        # labels or silently reinterpret arbitrary branch text.
+        missing = [i for i, edge in enumerate(branches) if not (edge.label or "").strip()]
+        known = [i for i, label in enumerate(labels) if label in ("Yes", "No")]
+        if len(missing) != 1 or len(known) != 1:
+            if any((edge.label or "").strip() for edge in branches):
+                continue
+
+        center_x, center_y = decision.bbox.center
+        departures = {}
+        for i, edge in enumerate(branches):
+            target = nodes.get(edge.target)
+            if target is None or not edge.points:
+                continue
+            sx, sy = edge.points[0]
+            dx = sx - center_x
+            if target.bbox.center[1] > center_y and abs(dx) >= max(12, decision.bbox.width * 0.22):
+                departures["left" if dx < 0 else "right"] = i
+
+        if set(departures) != {"left", "right"}:
+            continue
+
+        if len(missing) == 1 and len(known) == 1:
+            missing_index = missing[0]
+            known_label = labels[known[0]]
+            branches[missing_index].label = "No" if known_label == "Yes" else "Yes"
+        else:
+            branches[departures["left"]].label = "Yes"
+            branches[departures["right"]].label = "No"
+        context.diagnose(
+            "warning", "INFERRED_BRANCH_LABELS",
+            "A missing decision label was inferred from opposite-side connector departures; confirm it during review.",
+            "Verify the Yes/No labels during review.",
+            [decision.id] + [edge.id for edge in branches],
+        )
+
 
 class ValidationService:
     name = "validation"
 
     def run(self, context: PipelineContext) -> PipelineContext:
+        ProgrammingOCRValidationService().run(context)
         graph = context.graph
         if graph is None:
             context.diagnose("error", "MISSING_GRAPH", "No graph is available to validate.", "Run graph construction before validation.")
             return context
+        _reconcile_decision_labels(context)
         nodes = {node.id: node for node in graph.nodes}
         directed = nx.DiGraph()
         directed.add_nodes_from(nodes)
