@@ -93,7 +93,7 @@ Because conversion is rule-based, Modulo can only translate what it has a rule f
 | Symbol | Shape | Text it contains | Generated Python |
 |---|---|---|---|
 | Terminal | Rounded rectangle or oval | `Start` or `End` | Opens and closes the `main()` function |
-| Process | Rectangle | A statement such as `total = total + n` | The statement, validated and emitted as written |
+| Process | Rectangle | A statement such as `total = total + n`; the supported high-level command `Calculate factorial` (or `Calculate factorial of n`) | Ordinary statements are validated and emitted as written; factorial is lowered to a safe multiplication loop |
 | Data Input | Parallelogram | `Input n` or `Input n:int` | `n = input()` or `n = int(input())` |
 | Data Output | Parallelogram | `Output total` | `print(total)` |
 | Decision | Diamond | A condition such as `n > 0` | `if n > 0:` ... `else:` |
@@ -101,11 +101,11 @@ Because conversion is rule-based, Modulo can only translate what it has a rule f
 | Connector | Small circle | A matching label (`A`, `B`, ...) | Nothing (it only joins parts of the graph) |
 | Flow arrow | Arrow | Optional label | Control flow between blocks |
 
-**Supported logic:** sequential execution, if/else (including nested), `while` and `for` loops, variable assignment, logical expressions, input/output, and optional `break`, `continue`, and `return` (drawn as Process boxes containing only that word).
+**Supported logic:** sequential execution, if/else (including nested), `while` and `for` loops, variable assignment, logical expressions, input/output, the explicit high-level process command `Calculate factorial` (with one input, or `Calculate factorial of n` when multiple inputs exist), and optional `break`, `continue`, and `return` (drawn as Process boxes containing only that word). When an untyped input is compared with a numeric literal, code generation infers an integer input unless the diagram explicitly annotates a type.
 
 **Edge labels:** every Decision and Iteration shape has exactly two outgoing arrows labeled `Yes` and `No` (also accepted: `True`/`False`, `Y`/`N`, in any letter case). For an Iteration, `Yes` enters the loop body and `No` leaves the loop.
 
-**Statements and conditions** are limited to a small, safe language: names, numbers, strings, arithmetic, comparisons, `and`/`or`/`not`, and a short allowlist of built-ins (`print`, `input`, `int`, `float`, `str`, `len`, `range`, `abs`, `min`, `max`, `round`). Anything else produces a diagnostic rather than being passed into the output.
+**Statements and conditions** are limited to a small, safe language: names, numbers, strings, arithmetic, comparisons, `and`/`or`/`not`, and a short allowlist of built-ins (`print`, `input`, `int`, `float`, `str`, `len`, `range`, `abs`, `min`, `max`, `round`). The factorial command is a narrow, explicitly implemented exception to the expression grammar; unknown natural-language process text still produces a diagnostic rather than being passed into the output.
 
 **Input rules:**
 
@@ -605,20 +605,36 @@ Each setting can be overridden with an environment variable of the same name.
 
 ## 12. Testing
 
-Run everything from the repository root:
+Run the fast, deterministic tests from the repository root:
 
 ```bash
-pytest
+python -m pip install -r requirements.txt
+python -m pip install pytest
+python -m pytest -q
 ```
 
-The test strategy takes advantage of the pipeline being deterministic:
+### Flowchart recognition benchmark
 
-- **Unit tests per service** check each stage in isolation using small hand-built inputs.
-- **Synthetic diagrams for Vision.** Test images are drawn in code with OpenCV (rectangles, diamonds, arrows, text), so the expected shapes, positions, and text are known exactly.
-- **Golden-file tests for the whole pipeline.** Each fixture flowchart has an expected pseudocode file and an expected Python file. Any change in output shows up as a plain diff.
-- **Validation tests** include every diagnostic code, including malformed diagrams (missing Start, unreachable nodes, unlabeled branches, unstructured flow).
-- **Security tests** confirm that statements outside the allowlist are rejected.
-- **Store and API tests** cover expiry, eviction, bad uploads, and unknown analysis IDs.
+`tests/test_flowchart_benchmark.py` introduces a synthetic fixture suite and a machine-readable ground-truth manifest at `tests/fixtures/expected/manifest.json`. The PNG fixtures and per-fixture `.txt` control-flow specifications cover sequences, input/output, decisions and branch labels, nested branches, loops, crossing connectors, long connectors, small text, mathematical operators, colored backgrounds, and low-resolution diagrams. The images are deliberately synthetic and documented so new hand-verified fixtures can be added without requiring an external dataset.
+
+The fast default test run checks fixture integrity and coverage, and exercises the geometry classifier independently of OCR. It does **not** claim that a syntactically valid Python result proves the interpreted logic is correct.
+
+To run the real OCR and end-to-end analysis baseline (slower; requires the Python dependencies and a working Tesseract executable with the configured language data):
+
+```bash
+# PowerShell
+$env:FLOWCHART_RUN_PIPELINE = "1"
+python -m pytest tests/test_flowchart_benchmark.py -q -rs
+
+# bash
+FLOWCHART_RUN_PIPELINE=1 python -m pytest tests/test_flowchart_benchmark.py -q -rs
+```
+
+Each full-pipeline case records separate metrics for detected node count, shape-type agreement, exact OCR text agreement, detected edge count, IR availability, pseudocode line count, and diagnostic codes. Use `--junitxml=flowchart-baseline.xml` to retain per-case properties in CI. Failures/diagnostics should be attributed to the earliest failing stage: **vision** (shape detection/classification/OCR), **graph** (connector, direction, edge or branch label), **validation** (structural diagnostics), or **logic/pseudocode** (control-flow interpretation). Graph comparisons currently report counts and raw node IDs rather than asserting exact edge identity because recognition assigns its own IDs; extend the manifest with verified coordinate/label matching before using these metrics as a hard release gate.
+
+The initial fast baseline in this environment is **13 passed, 11 skipped** (the 11 full-pipeline cases are opt-in to avoid unexpected OCR runtime in every unit-test run). A full OCR baseline was not completed as part of the fast run. Install Tesseract separately from pip; if it is missing or its executable/language data is unavailable, the opt-in pipeline tests may fail with an environment or OCR diagnostic. These tests do not replace broader unit/API tests: this project archive currently contains no pre-existing `tests/` suite despite earlier architecture text describing one.
+
+To add a fixture: add a PNG under `tests/fixtures/flowcharts/`, add exact expected node types/text and directed edges (including branch labels) to the manifest, and add a readable control-flow specification under `tests/fixtures/expected/`. Prefer exact expected pseudocode only after manually verifying the recognition and logic output; never bless a current incorrect output as ground truth merely to make the test pass.
 
 ---
 
@@ -654,3 +670,37 @@ Planned after the MVP, in no fixed order:
 Modulo is open source. The license will be chosen and added as `LICENSE` once Open Decision 3 is settled.
 
 Developed by West Texas System Solutions for CS4366: Senior Capstone, Fall 2026.
+
+
+### OCR preprocessing regression checks
+
+The vision OCR stage now keeps the unthresholded crop as its first candidate and compares it with CLAHE contrast normalization, mild bilateral denoising, adaptive thresholding, and Otsu variants. Small crops are enlarged 1.5×–3× before recognition, and OCR word boxes are mapped back to page coordinates. Candidate ranking combines Tesseract confidence with printable-character quality, symbol preservation, shape-aware heuristics, and agreement between repeated readings; up to three plausible readings are exposed as `ocr_candidates` when readings are close or confidence is low. The original recognized text is not rewritten to satisfy Python syntax.
+
+Run focused OCR unit tests with `PYTHONPATH=. pytest -q tests/test_ocr_preprocessing.py tests/test_flowchart_benchmark.py`. On the implementation environment, this completed with **17 passed, 11 skipped** (the 11 end-to-end OCR benchmark cases are opt-in). A real Tesseract end-to-end run for `simple_sequence` passed in **4.12 seconds**. Attempting all opt-in end-to-end fixtures exceeded the five-minute execution window, so no aggregate before/after OCR accuracy percentage is claimed; use `PYTHONPATH=. FLOWCHART_RUN_PIPELINE=1 pytest -q tests/test_flowchart_benchmark.py --junitxml=benchmark.xml` on a benchmark-capable machine to record the per-fixture metrics.
+
+### Programming-aware OCR ambiguity review
+
+Modulo's validation stage checks programming-like flowchart text for likely OCR confusions (including `=`/`==`, `%`/`0`, `1`/`l`, and bracket/parenthesis pairs). It retains the original OCR reading in `original_ocr_text`, keeps proposed readings in `ocr_candidates`, and emits a review warning rather than silently rewriting expressions. Syntax validity is only a weak ranking signal; it does not establish which reading the diagram intended. Review suggestions are shown alongside flagged elements, and the user must explicitly edit and revalidate a reading before it affects pseudocode or generated Python.
+
+Run the focused checks with `PYTHONPATH=. pytest -q tests/test_programming_ocr_validation.py tests/test_ocr_preprocessing.py`.
+
+### Shape-classification robustness (Prompt 4)
+
+The vision classifier now combines multi-scale polygon approximation, interior
+corner angles, normalized corner placement, bounding-box aspect ratio, fill ratio,
+contour solidity, and circularity. It uses these cues together to distinguish
+process rectangles, decision diamonds, input/output parallelograms, iteration
+hexagons, rounded terminals, and circular connectors. Ambiguous contours remain
+`unknown` rather than being coerced into a known type. Existing node fields and
+shape labels are preserved, so downstream graph and text-association interfaces
+are unchanged. OCR still uses the contour's original bounding box and crop; the
+classifier does not shift or merge node boxes.
+
+Validation performed for this change: `PYTHONPATH=. pytest -q` passes the
+standard geometry and OCR unit tests plus dedicated rotated-rectangle, rounded
+terminal, circular connector, low-resolution parallelogram, and ambiguous-triangle
+tests. The current run reports **29 passed, 11 skipped**. The skipped tests are
+full-pipeline benchmark runs that require `FLOWCHART_RUN_PIPELINE=1` and a working
+Tesseract installation. This is a classifier-level regression improvement, not a
+claim of measured end-to-end OCR/graph accuracy improvement; compare those fixture
+metrics with `FLOWCHART_RUN_PIPELINE=1 PYTHONPATH=. pytest -q` on the target setup.
