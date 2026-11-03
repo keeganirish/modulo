@@ -80,10 +80,11 @@ try {
             Copy-Item $from $to -Recurse -Force
         }
     }
-    foreach ($file in 'modulo_launcher.py', 'requirements.txt') {
+    foreach ($file in 'modulo_launcher.py', 'requirements.txt', 'VERSION') {
         Copy-Item (Join-Path $Source $file) $AppDir -Force
     }
-    Ok "Installed to $AppDir"
+    $ver = (Get-Content (Join-Path $AppDir 'VERSION') -ErrorAction SilentlyContinue | Select-Object -First 1)
+    Ok "Installed Modulo $ver to $AppDir"
 
     # 2 ---------------------------------------------------------------- Python
     Step 2 'Checking for Python'
@@ -110,10 +111,11 @@ try {
     if (-not (Test-Path $venvPy)) { Run $py @('-m', 'venv', $Venv) }
     Run $venvPy @('-m', 'pip', 'install', '--disable-pip-version-check', '--upgrade', 'pip')
     Run $venvPy @('-m', 'pip', 'install', '--disable-pip-version-check', '-r', (Join-Path $AppDir 'requirements.txt'))
+    Run $venvPy @('-m', 'pip', 'install', '--disable-pip-version-check', 'waitress>=3.0')   # production web server
     try {   # native app window; if this fails Modulo simply opens in the browser
         Run $venvPy @('-m', 'pip', 'install', '--disable-pip-version-check', 'pywebview>=5.0')
     } catch { Warn 'Native window component unavailable - Modulo will open in your browser instead.' }
-    Run $venvPy @('-c', "import flask, waitress, cv2, pymupdf, pytesseract, networkx, numpy, PIL, webview; print('Packages and native window OK')")
+    Run $venvPy @('-c', "import flask, waitress, cv2, pymupdf, pytesseract, networkx, numpy, PIL; print('Packages OK')")
 
     # 4 ---------------------------------------------------------------- Tesseract
     Step 4 'Checking for Tesseract OCR'

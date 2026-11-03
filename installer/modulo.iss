@@ -7,15 +7,14 @@ DefaultDirName={autopf}\Modulo
 DefaultGroupName=Modulo
 OutputBaseFilename=ModuloSetup
 OutputDir=..\dist
-SetupIconFile=..\assets\modulo.ico
 Compression=lzma2
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
 [Files]
 Source: "..\dist\Modulo\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 [Icons]
-Name: "{group}\Modulo"; Filename: "{app}\Modulo.exe"; IconFilename: "{app}\Modulo.exe"
-Name: "{autodesktop}\Modulo"; Filename: "{app}\Modulo.exe"; IconFilename: "{app}\Modulo.exe"; Tasks: desktopicon
+Name: "{group}\Modulo"; Filename: "{app}\Modulo.exe"
+Name: "{autodesktop}\Modulo"; Filename: "{app}\Modulo.exe"; Tasks: desktopicon
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"
 [Run]

@@ -47,7 +47,7 @@ mkdir -p "$APP"
 for item in backend frontend assets samples docs; do
   [ -d "$SRC/$item" ] && { rm -rf "$APP/$item"; cp -R "$SRC/$item" "$APP/$item"; }
 done
-cp "$SRC/modulo_launcher.py" "$SRC/requirements.txt" "$APP/"
+cp "$SRC/modulo_launcher.py" "$SRC/requirements.txt" "$SRC/VERSION" "$APP/"
 ok "Installed to $APP"
 
 step 2 "Checking for Python"
@@ -65,6 +65,7 @@ step 3 "Installing Modulo packages (this can take a few minutes)"
 [ -x "$VENV/bin/python" ] || "$PY" -m venv "$VENV"
 "$VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip
 "$VENV/bin/python" -m pip install --disable-pip-version-check -r "$APP/requirements.txt"
+"$VENV/bin/python" -m pip install --disable-pip-version-check "waitress>=3.0"   # production web server
 if [ "$OS" = "Darwin" ]; then   # native window; falls back to the browser if it fails
   "$VENV/bin/python" -m pip install --disable-pip-version-check "pywebview>=5.0" || warn "Native window unavailable - Modulo will open in your browser."
 fi
