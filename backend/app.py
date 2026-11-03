@@ -159,7 +159,7 @@ def create_app(settings: Settings | None = None) -> Flask:
             return error("ANALYSIS_EXPIRED", "This analysis is unknown or expired. Upload the diagram again.", 404)
         reviewed = pipeline.review(entry.context, node_text, edge_labels)
         entry.context = reviewed
-        return jsonify(AnalysisResponse(entry.context, payload["analysis_id"], entry.expires_at).to_dict())
+        return jsonify(AnalysisResponse(entry.context, payload["analysis_id"], store.expiry(entry)).to_dict())
 
     return app
 

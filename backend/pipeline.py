@@ -37,7 +37,12 @@ def review(context: PipelineContext, node_text: dict[str, str] | None = None,
     """Apply constrained OCR/branch-label corrections, then rebuild safe stages."""
     node_text = node_text or {}
     edge_labels = edge_labels or {}
+    # Keep the original diagnostics long enough to authorize edits only for flagged
+    # elements, then clear them before validating the submitted corrections. If we
+    # leave the original errors in place, context.has_errors short-circuits every
+    # review and the user can never correct the issues that triggered review mode.
     flagged = {element_id for diagnostic in context.diagnostics for element_id in diagnostic.element_ids}
+    context.diagnostics.clear()
     nodes = {node.id: node for node in context.elements}
     edges = {edge.id: edge for edge in (context.graph.edges if context.graph else [])}
     for node_id, text in node_text.items():
