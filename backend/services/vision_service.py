@@ -16,6 +16,38 @@ from backend.models import BoundingBox, Node, OCRWord, PipelineContext
 OCR_LOCK = Lock()  # pytesseract's executable setting is process-global.
 
 
+def _drop_enclosing_cycle_faces(candidates: list[np.ndarray]) -> list[np.ndarray]:
+    """Drop low-convexity loop faces that enclose more convex node candidates."""
+    geometry = []
+    for contour in candidates:
+        area = float(cv2.contourArea(contour))
+        hull = cv2.convexHull(contour)
+        hull_area = float(cv2.contourArea(hull))
+        if area <= 0 or hull_area <= 0:
+            continue
+        geometry.append((contour, area, area / hull_area, hull,
+                         cv2.boundingRect(contour), hull_area))
+
+    rejected = set()
+    for i, (outer, outer_area, outer_solidity, outer_hull, outer_box, _) in enumerate(geometry):
+        ox, oy, ow, oh = outer_box
+        for j, (_, inner_area, inner_solidity, inner_hull, inner_box, inner_hull_area) in enumerate(geometry):
+            if i == j or inner_area >= outer_area or inner_solidity <= outer_solidity + .015:
+                continue
+            ix, iy, iw, ih = inner_box
+            if ix < ox or iy < oy or ix + iw > ox + ow or iy + ih > oy + oh:
+                continue
+            try:
+                overlap, _ = cv2.intersectConvexConvex(
+                    outer_hull.astype(np.float32), inner_hull.astype(np.float32))
+            except cv2.error:
+                continue
+            if overlap / max(1.0, inner_hull_area) > .05:
+                rejected.add(i)
+                break
+    return [item[0] for index, item in enumerate(geometry) if index not in rejected]
+
+
 def shape_contours(binary: np.ndarray, grayscale: np.ndarray | None = None, color_image: np.ndarray | None = None) -> list[np.ndarray]:
     contours, hierarchy = cv2.findContours(binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
     if hierarchy is None:
@@ -35,10 +67,13 @@ def shape_contours(binary: np.ndarray, grayscale: np.ndarray | None = None, colo
             continue
         # Long, narrow enclosed regions are commonly arrow shafts/arrowheads,
         # not flowchart nodes. They otherwise become empty OCR "connector" nodes.
+        # Preserve large elongated nodes while rejecting thin connector components.
         aspect = max(width, height) / max(1.0, min(width, height))
-        if aspect > 3.2:
+        fill = area / max(1.0, width * height)
+        if aspect > 3.2 and (
+                min(width, height) < 60 or aspect > 8.0 or fill < .85):
             continue
-        if area > page_area * .85 or area / (width * height) < .38:
+        if area > page_area * .85 or fill < .38:
             continue
         hull_area = cv2.contourArea(cv2.convexHull(contour))
         if hull_area == 0 or area / hull_area < .92:
@@ -161,6 +196,19 @@ def classify_shape(contour: np.ndarray, page_width: int) -> str:
     if (0.78 <= aspect <= 1.28 and max(width, height) <= max(42, page_width * .16)
             and circularity >= .72 and solidity >= .90 and fill >= .62):
         return "connector"
+
+    # Axis-aligned rounded rectangles may collapse to four coarse vertices.
+    # Compare all four corner cutbacks at fine resolution before sharp-rectangle
+    # classification, without relying on labels or chart-specific dimensions.
+    if len(fine) >= 7 and solidity >= .92 and fill >= .72:
+        corners = np.array([[x, y], [x + width, y],
+                            [x + width, y + height], [x, y + height]], dtype=float)
+        points = fine.astype(float)
+        cuts = [float(np.min(np.linalg.norm(points - corner, axis=1))) /
+                max(1.0, min(width, height)) for corner in corners]
+        if (all(.08 <= cut <= .48 for cut in cuts)
+                and max(cuts) - min(cuts) <= .18):
+            return "terminal"
 
     # Rotated rectangles may acquire a fifth vertex from raster stair-stepping.
     # A minimum-area rectangle gives a rotation-invariant right-angle/occupancy cue.
