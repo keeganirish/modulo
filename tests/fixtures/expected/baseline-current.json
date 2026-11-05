@@ -1,0 +1,27 @@
+{
+  "fixture": "simple_sequence",
+  "completed_stages": [
+    "intake",
+    "vision",
+    "graph",
+    "validation",
+    "logic",
+    "pseudocode"
+  ],
+  "detected_nodes": 3,
+  "detected_node_types": [
+    "terminal",
+    "process",
+    "terminal"
+  ],
+  "detected_node_text": [
+    "Start",
+    "xX = 1",
+    "End"
+  ],
+  "detected_edges": 2,
+  "ir_available": true,
+  "pseudocode_lines": 3,
+  "diagnostics": [],
+  "note": "Single-fixture snapshot from current implementation; not a quality pass/fail and dependent on installed Tesseract version/configuration."
+}

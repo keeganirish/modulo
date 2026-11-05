@@ -1,0 +1,10 @@
+# Expected control-flow specification (not asserted as OCR output until baseline is reviewed)
+1. terminal: Start
+2. data: Input a, b
+3. process: c = a * b + 2
+4. terminal: End
+
+Directed edges:
+n1 -> n2
+n2 -> n3
+n3 -> n4

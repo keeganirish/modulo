@@ -72,15 +72,6 @@ def redirect_output_to_log() -> None:
     sys.stderr = sys.stderr or log
 
 
-def app_version() -> str:
-    for folder in (BASE, BASE.parent):
-        try:
-            return (folder / "VERSION").read_text().strip()
-        except OSError:
-            continue
-    return "dev"
-
-
 def free_port() -> int:
     wanted = os.getenv("PORT")
     if wanted:
@@ -109,7 +100,47 @@ def wait_until_up(url: str, timeout: float = 20) -> bool:
     return False
 
 
+def set_windows_app_identity() -> None:
+    """Give Windows a stable application identity so the taskbar groups Modulo correctly."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+            "WestTexasSystemSolutions.Modulo"
+        )
+    except Exception:
+        pass
+
+
+def apply_windows_window_icon(icon_path: Path) -> None:
+    """Set both the title-bar and taskbar icons on the native pywebview window."""
+    if sys.platform != "win32" or not icon_path.is_file():
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        IMAGE_ICON, LR_LOADFROMFILE = 1, 0x0010
+        WM_SETICON, ICON_SMALL, ICON_BIG = 0x0080, 0, 1
+        # pywebview creates its native window asynchronously after webview.start().
+        for _ in range(100):
+            hwnd = user32.FindWindowW(None, "Modulo")
+            if hwnd:
+                icon = user32.LoadImageW(None, str(icon_path), IMAGE_ICON, 0, 0, LR_LOADFROMFILE)
+                if icon:
+                    user32.SendMessageW(hwnd, WM_SETICON, ICON_SMALL, icon)
+                    user32.SendMessageW(hwnd, WM_SETICON, ICON_BIG, icon)
+                    # Keep the HICON alive for the lifetime of the process.
+                    globals()["_MODULO_HICON"] = icon
+                return
+            time.sleep(0.1)
+    except Exception:
+        pass
+
+
 def main() -> int:
+    set_windows_app_identity()
     redirect_output_to_log()
     configure_bundled_tesseract()
     find_system_tesseract()
@@ -134,14 +165,40 @@ def main() -> int:
 
     try:
         import webview  # native window; closing it exits the app
-        webview.create_window(f"Modulo {app_version()}", url, width=1280, height=860, min_size=(900, 600))
+        icon_path = BASE / "assets" / "modulo.ico"
+        if not icon_path.is_file():
+            icon_path = Path(__file__).resolve().parent / "assets" / "modulo.ico"
+        # pywebview's create_window() does not accept an icon= argument.
+        # The executable icon is set by PyInstaller; apply_windows_window_icon()
+        # sets the native title-bar/taskbar icons after the window is created.
+        webview.create_window(
+            "Modulo", url, width=1280, height=860, min_size=(900, 600),
+            maximized=True,
+        )
+        if sys.platform == "win32":
+            threading.Thread(target=apply_windows_window_icon, args=(icon_path,), daemon=True).start()
         webview.start()
     except Exception as exc:
-        print(f"Native window unavailable ({exc}); using the browser.", flush=True)
+        print(f"Native application window failed to start: {exc}", file=sys.stderr, flush=True)
+        if sys.platform == "win32":
+            # Do not silently open a browser: on Windows Modulo is intended to be a
+            # desktop application with its own branded taskbar and title-bar icon.
+            try:
+                import ctypes
+                ctypes.windll.user32.MessageBoxW(
+                    None,
+                    "Modulo could not open its application window.\n\n"
+                    "Make sure Microsoft Edge WebView2 Runtime is installed, then run Modulo again.\n\n"
+                    f"Details: {exc}",
+                    "Modulo - Startup Error", 0x10,
+                )
+            except Exception:
+                pass
+            return 1
+        # Browser fallback remains available on platforms without a supported native GUI.
         webbrowser.open(url)
         print(f"Modulo is running at {url} - close the browser tab to quit.", flush=True)
         try:
-            # The page pings /api/ping; quit once the tab has been closed for a while.
             started = time.time()
             while True:
                 time.sleep(2)
