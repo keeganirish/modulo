@@ -94,6 +94,16 @@ button:focus-visible,a:focus-visible,summary:focus-visible,[tabindex]:focus-visi
   letter-spacing:-1px;
   line-height:1.2
 }
+.brand-logo {
+  display:block;
+  width:155px;
+  height:40px;
+  object-fit:contain;
+  object-position:left center
+}
+.brand-logo-light { display:none; }
+[data-theme="light"] .brand-logo-dark { display:none; }
+[data-theme="light"] .brand-logo-light { display:block; }
 .brand-mark {
   position:relative;
   font-size:24px;
@@ -240,15 +250,10 @@ p {
   font-size:9px;
   opacity:.7
 }
-.upload-bar {
-  background:var(--surface);
-  border:1px solid var(--line);
-  border-radius:10px;
-  padding:17px;
-  display:flex;
-  justify-content:space-between;
-  gap:14px;
-  flex-wrap:wrap
+.panel-upload {
+  padding:12px 14px;
+  border-bottom:1px solid var(--line);
+  background:color-mix(in srgb,var(--surface) 94%,var(--accent) 6%);
 }
 .drop-zone {
   cursor:pointer;
@@ -256,8 +261,7 @@ p {
   display:flex;
   align-items:center;
   gap:14px;
-  flex:1;
-  min-width:300px;
+  min-width:0;
   border:1px dashed transparent;
   border-radius:7px;
   padding:3px
@@ -301,7 +305,10 @@ h3 {
 .upload-actions {
   display:flex;
   gap:6px;
-  align-items:center
+  align-items:center;
+  justify-content:flex-end;
+  margin-top:10px;
+  flex-wrap:wrap
 }
 .error-text {
   color:var(--error)!important
@@ -404,6 +411,19 @@ progress {
   position:relative;
   margin-bottom:17px
 }
+.empty-shape svg,.empty-lines svg,.empty-code svg {
+  display:block;
+  width:100%;
+  height:100%;
+  color:var(--line)
+}
+.empty-shape {
+  width:48px;
+  height:48px;
+  border:0;
+  border-radius:0
+}
+.empty-shape:after { display:none; }
 .empty-shape:after {
   content:"";
   position:absolute;
@@ -413,7 +433,9 @@ progress {
   border-left:2px solid var(--line)
 }
 .empty-lines,.empty-code {
-  font:32px ui-monospace,monospace;
+  display:block;
+  width:44px;
+  height:44px;
   color:var(--line);
   line-height:1.5
 }
@@ -454,6 +476,13 @@ progress {
 .diagram-frame img {
   width:100%;
   display:block
+}
+.diagram-frame iframe {
+  display:block;
+  width:100%;
+  min-height:520px;
+  border:0;
+  background:white
 }
 .diagram-frame svg {
   position:absolute;
@@ -763,9 +792,6 @@ code {
   .steps .future {
     display:none
   }
-  .upload-bar {
-    padding:12px
-  }
   .drop-zone {
   cursor:pointer;
   transition:border-color .15s ease,background .15s ease,box-shadow .15s ease;
@@ -814,9 +840,6 @@ code {
     transition:background .12s
   }
 }
-
-/* Keep OCR alternatives visible as review suggestions, distinct from the original. */
-.ocr-alternatives { display: block; margin-top: .35rem; opacity: .82; white-space: normal; overflow-wrap: anywhere; }
 
 /* Analysis notes: calmer spacing and a consistent diagnostic layout. */
 .diagnostics {
@@ -914,6 +937,25 @@ code {
 .additional-diagnostics-list .diagnostic:first-child {
   border-top:0;
 }
+.recognition-score {
+  margin:16px 24px 0;
+  padding:14px 16px;
+  border:1px solid var(--line);
+  border-left:4px solid var(--accent);
+  border-radius:9px;
+  background:color-mix(in srgb,var(--surface) 92%,var(--accent) 8%);
+}
+.recognition-score.good { border-left-color:#5aa3e8; }
+.recognition-score.iffy { border-left-color:#d6a84d; }
+.recognition-score.risky,.recognition-score.poor { border-left-color:var(--error); }
+.score-heading { display:flex; justify-content:space-between; gap:12px; align-items:center; font-size:13px; }
+.score-heading span { font:700 16px ui-monospace,monospace; }
+.score-meter { height:8px; margin:10px 0 7px; overflow:hidden; border-radius:99px; background:var(--line); }
+.score-meter span { display:block; height:100%; border-radius:inherit; background:var(--accent); }
+.recognition-score.iffy .score-meter span { background:#d6a84d; }
+.recognition-score.risky .score-meter span,.recognition-score.poor .score-meter span { background:var(--error); }
+.score-details { margin:0; font-size:11px; line-height:1.5; }
+.score-details-heading { margin:0 0 10px; font-size:12px; letter-spacing:.1px; }
 @media(max-width:1100px) {
   .diagnostic {
     grid-template-columns:64px minmax(200px,1fr) minmax(180px,.9fr);
@@ -945,6 +987,7 @@ code {
   .additional-diagnostics {
     padding:12px 18px 16px;
   }
+  .recognition-score { margin-left:18px; margin-right:18px; }
 }
 
 
@@ -952,14 +995,15 @@ code {
 main { max-width:1760px; padding:24px 3vw 0; }
 .header { padding:15px 3vw; background:var(--surface); border-bottom:1px solid var(--line); }
 .brand { font-size:24px; letter-spacing:-.7px; }
+.brand-logo { width:145px; height:38px; }
 .brand-mark { border-radius:10px; box-shadow:none; }
 .brand-caption { color:var(--muted); letter-spacing:1.5px; }
 .intro { margin:0 0 18px; align-items:flex-end; }
 .intro h1 { font-size:clamp(22px,2.2vw,29px); letter-spacing:-.75px; font-weight:650; }
 .intro p:not(.eyebrow) { margin:5px 0 0; font-size:13px; max-width:700px; }
 .steps { margin:0; }
-.upload-bar { padding:14px 16px; gap:12px; border-radius:9px; box-shadow:0 2px 8px rgb(25 40 65 / 3%); }
 .drop-zone { min-width:260px; }
+.panel-upload { padding:12px 15px; }
 .upload-symbol { background:var(--accent-soft); color:var(--accent); }
 .button { border-radius:7px; min-height:38px; font-weight:600; }
 .button.primary { box-shadow:none; }
@@ -979,4 +1023,4 @@ main { max-width:1760px; padding:24px 3vw 0; }
 .site-footer { letter-spacing:.35px; }
 #status.success { color:var(--accent); }
 @media (max-width:1100px) { main { padding:22px 22px 0; } }
-@media (max-width:760px) { main { padding:20px 16px 0; } .header { padding:12px 16px; } .intro { margin-bottom:14px; } .intro h1 { font-size:23px; } .upload-bar { padding:11px; } .panel:not(.diagram-panel) { min-height:360px; } }
+@media (max-width:760px) { main { padding:20px 16px 0; } .header { padding:12px 16px; } .intro { margin-bottom:14px; } .intro h1 { font-size:23px; } .panel-upload { padding:11px; } .drop-zone { flex-wrap:wrap; } .drop-zone .button { margin-left:0; } .upload-actions { justify-content:flex-start; } .panel:not(.diagram-panel) { min-height:360px; } }

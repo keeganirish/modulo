@@ -26,7 +26,8 @@ def create_app(settings: Settings | None = None) -> Flask:
     settings = settings or Settings()
     app = Flask(__name__, static_folder=str(ROOT / "frontend"), static_url_path="")
     app.config.update(MAX_CONTENT_LENGTH=settings.max_upload_bytes + 1024 * 1024,
-                      MAX_FORM_MEMORY_SIZE=65536, MAX_FORM_PARTS=10)
+                      MAX_FORM_MEMORY_SIZE=settings.max_upload_bytes + 1024 * 1024,
+                      MAX_FORM_PARTS=10)
     store = AnalysisStore(settings)
     app.extensions["analysis_store"] = store
     capacity = BoundedSemaphore(2)
@@ -62,6 +63,19 @@ def create_app(settings: Settings | None = None) -> Flask:
     @app.get("/samples/<path:filename>")
     def sample(filename):
         return send_from_directory(ROOT / "samples", filename)
+
+    @app.get("/api/samples")
+    def samples():
+        allowed = set(settings.ALLOWED_EXTENSIONS)
+        entries = sorted(
+            (path for path in (ROOT / "samples").iterdir()
+             if path.is_file() and path.suffix.lower().lstrip(".") in allowed),
+            key=lambda path: path.name,
+        )
+        return jsonify(samples=[{"name": path.name, "url": f"/samples/{path.name}",
+                                 "bytes": path.stat().st_size,
+                                 "under_limit": path.stat().st_size <= settings.max_upload_bytes}
+                                for path in entries])
 
     @app.post("/api/analyze")
     def analyze():
