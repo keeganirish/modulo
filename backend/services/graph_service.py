@@ -459,6 +459,180 @@ def infer_high_confidence_missing_edges(context: PipelineContext, graph: FlowGra
 
 
 
+def infer_dangling_arrow_to_existing_edge(
+    context: PipelineContext, graph: FlowGraph, fragments: list[tuple[Node, np.ndarray]], image_shape: tuple[int, int]
+) -> int:
+    """Attach a visible arrowhead that terminates just short of another connector.
+
+    Some diagrams draw a branch arrow into the side of an existing vertical or
+    horizontal connector. Rasterization can leave a tiny white gap, so connected
+    components report the branch as dangling even though its arrowhead clearly
+    points at the receiving stroke. This recovery requires a detected arrowhead,
+    a short geometrically aligned gap, a unique receiving edge, and a real source
+    node contact. It never joins fragments based on reading order alone.
+    """
+    if not fragments or not graph.edges:
+        return 0
+    nodes = {node.id: node for node in graph.nodes}
+    outgoing = {node.id for node in graph.nodes if any(edge.source == node.id for edge in graph.edges)}
+    height, width = image_shape
+    max_gap = max(36.0, min(180.0, width * 0.09))
+    inferred = 0
+
+    def sampled_path(points: list[tuple[int, int]], step: float = 5.0) -> list[tuple[float, float]]:
+        samples: list[tuple[float, float]] = []
+        for first, second in zip(points, points[1:]):
+            length = math.dist(first, second)
+            count = max(1, int(math.ceil(length / step)))
+            for index in range(count + 1):
+                ratio = index / count
+                samples.append((first[0] + (second[0] - first[0]) * ratio,
+                                first[1] + (second[1] - first[1]) * ratio))
+        return samples
+
+    for source, points in fragments:
+        if source.id in outgoing or len(points) < 12:
+            continue
+        # Arrowheads are found at the four extremities of an orthogonal route.
+        # Use a median coordinate to avoid choosing an antialiased corner pixel.
+        tips = []
+        for axis in (0, 1):
+            minimum, maximum = int(points[:, axis].min()), int(points[:, axis].max())
+            for value, sign in ((minimum, 1), (maximum, -1)):
+                band = points[points[:, axis] == value]
+                other = 1 - axis
+                tip = ((value, int(round(float(np.median(band[:, other]))))) if axis == 0
+                       else (int(round(float(np.median(band[:, other])))), value))
+                # The main detector is strongest on clean triangular heads. A
+                # second, local flare test handles outlined/V-shaped arrowheads
+                # whose antialiased extreme consists of several pixels.
+                flare_widths = []
+                for offset in (3, 8, 14, 22, 32, 44):
+                    coordinate = value + sign * offset
+                    slab = points[np.abs(points[:, axis] - coordinate) <= 2]
+                    if len(slab):
+                        flare_widths.append(float(np.ptp(slab[:, other]) + 1))
+                flared = (len(flare_widths) >= 4
+                          and max(flare_widths[:5]) <= 80.0
+                          and max(flare_widths[1:5]) >= max(12.0, flare_widths[0] * 1.8)
+                          and any(flare_widths[i + 1] > flare_widths[i] * 1.20
+                                  for i in range(min(3, len(flare_widths) - 1))))
+                if arrowhead_evidence(points, tip) or flared:
+                    tips.append(tip)
+        if not tips:
+            continue
+
+        options = []
+        for tip in tips:
+            nearby_distances = np.linalg.norm(
+                points.astype(float) - np.asarray(tip, dtype=float), axis=1
+            )
+            nearby = points[nearby_distances < max(70.0, width * 0.045)]
+            if len(nearby) < 4:
+                continue
+            # Estimate the arrow's pointing vector from the local shaft toward
+            # the tip, rather than from the whole elbow-shaped component.
+            distances = np.linalg.norm(nearby.astype(float) - np.asarray(tip, dtype=float), axis=1)
+            shaft = nearby[distances >= 12.0]
+            if len(shaft) < 3:
+                continue
+            direction = np.asarray(tip, dtype=float) - np.median(shaft.astype(float), axis=0)
+            direction_norm = float(np.linalg.norm(direction))
+            if direction_norm < 1.0:
+                continue
+            direction /= direction_norm
+
+            for edge in graph.edges:
+                target = nodes.get(edge.target)
+                if target is None or edge.source == source.id or edge.target == source.id or len(edge.points) < 2:
+                    continue
+                route_samples = sampled_path(edge.points)
+                if not route_samples:
+                    continue
+                distances_to_route = [math.dist(tip, point) for point in route_samples]
+                nearest_index = int(np.argmin(distances_to_route))
+                projection = route_samples[nearest_index]
+                gap = distances_to_route[nearest_index]
+                if gap < 5.0 or gap > max_gap:
+                    continue
+                toward = np.asarray(projection, dtype=float) - np.asarray(tip, dtype=float)
+                toward_norm = float(np.linalg.norm(toward))
+                if toward_norm <= 0:
+                    continue
+                alignment = float(np.dot(direction, toward / toward_norm))
+                if alignment < 0.62:
+                    continue
+                # A receiving path must continue to a distinct node in the
+                # arrow's forward direction. Keep the target endpoint grounded
+                # in an already traced edge, not a guessed nearby shape.
+                options.append((gap, -alignment, source, tip, edge, projection, route_samples, nearest_index))
+
+        if not options:
+            continue
+        options.sort(key=lambda item: (item[0], item[1]))
+        best = options[0]
+        if len(options) > 1 and options[1][0] <= best[0] + max(8.0, best[0] * 0.12):
+            continue
+        gap, neg_alignment, source, tip, receiving_edge, projection, route_samples, nearest_index = best
+        target_id = receiving_edge.target
+        if any(edge.source == source.id and edge.target == target_id for edge in graph.edges):
+            continue
+
+        # Recover the physical branch route from its source contact to the
+        # arrowhead, then bridge the small gap and follow the receiving edge to
+        # its already-established destination.
+        # contacts() may be slightly offset from the actual node boundary;
+        # use the closest observed pixel as a robust path start.
+        nearest_source = points[int(np.argmin(np.linalg.norm(
+            points.astype(float) - np.asarray(source.bbox.center, dtype=float), axis=1)))]
+        branch_points = stroke_path(points, (int(nearest_source[0]), int(nearest_source[1])), tip)
+        if not branch_points:
+            # A few antialiased pixels can disconnect the pixel-walk even though
+            # the fragment was one component. Preserve its elbow geometry by
+            # selecting the observed point farthest from the direct source-tip
+            # chord; for a right-angle route this is the corner.
+            start_point = np.asarray(nearest_source, dtype=float)
+            end_point = np.asarray(tip, dtype=float)
+            chord = end_point - start_point
+            denominator = max(1.0, float(np.dot(chord, chord)))
+            offsets = points.astype(float) - start_point
+            ratios = np.clip((offsets @ chord) / denominator, 0.0, 1.0)
+            projections = start_point + ratios[:, None] * chord
+            deviations = np.linalg.norm(points.astype(float) - projections, axis=1)
+            elbow = points[int(np.argmax(deviations))]
+            branch_points = [tuple(map(int, nearest_source)), tuple(map(int, elbow)), tip]
+        route = [(int(x), int(y)) for x, y in branch_points]
+        bridge_point = (int(round(projection[0])), int(round(projection[1])))
+        if route[-1] != bridge_point:
+            route.append(bridge_point)
+        # Continue along the receiver toward its target. The sampled path is
+        # ordered source-to-target, so the nearest point's suffix is correct.
+        suffix = route_samples[nearest_index + 1:]
+        route.extend((int(round(x)), int(round(y))) for x, y in suffix)
+        target_node = nodes[target_id]
+        tx, ty, tw, th = target_node.bbox.to_list()
+        target_anchor = (int(round(tx + tw / 2)), int(round(ty + th / 2)))
+        if math.dist(route[-1], target_anchor) > max_gap * 2:
+            route.append(target_anchor)
+        edge = Edge(f"e{len(graph.edges) + 1}", source.id, target_id, points=route)
+        graph.edges.append(edge)
+        context.arrows.append(Arrow(edge.id, route, route[-1], source_hint=source.id, target_hint=target_id))
+        # The dangling-fragment warning is no longer actionable once its
+        # arrowhead has been safely attached to a receiving connector.
+        context.diagnostics[:] = [
+            diagnostic for diagnostic in context.diagnostics
+            if not (diagnostic.code == "DANGLING_ARROW" and diagnostic.element_ids == [source.id])
+        ]
+        context.diagnose(
+            "warning", "INFERRED_ARROW_TO_CONNECTOR",
+            "A dangling arrow was connected to a nearby existing connector because its visible arrowhead points into that stroke.",
+            "Review the recovered branch connection.", [source.id, target_id, receiving_edge.id],
+        )
+        outgoing.add(source.id)
+        inferred += 1
+    return inferred
+
+
 def suppress_node_outline_artifacts(mask: np.ndarray, nodes: list[Node]) -> np.ndarray:
     """Remove residual node-border ink before connector component analysis.
 
@@ -510,6 +684,7 @@ class GraphService:
         count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
         components = sorted(range(1, count), key=lambda index: (int(stats[index, cv2.CC_STAT_TOP]), int(stats[index, cv2.CC_STAT_LEFT])))
         candidates = []
+        dangling_fragments: list[tuple[Node, np.ndarray]] = []
         for index in components:
             if stats[index, cv2.CC_STAT_AREA] < 20 or max(stats[index, cv2.CC_STAT_WIDTH], stats[index, cv2.CC_STAT_HEIGHT]) < 18:
                 continue
@@ -589,6 +764,8 @@ class GraphService:
                 continue
 
             if len(ports) < 2:
+                if len(ports) == 1 and not ports[0].head:
+                    dangling_fragments.append((ports[0].node, points.copy()))
                 context.diagnose("warning", "DANGLING_ARROW", "A connector fragment does not reach two shape boundaries.", "Attach each arrow to its source and destination; remove stray lines.", ids)
                 continue
 
@@ -701,6 +878,9 @@ class GraphService:
             edge = Edge(f"e{index}", source.node.id, target.node.id, points=path)
             graph.edges.append(edge)
             context.arrows.append(Arrow(edge.id, path, target.point, source_hint=edge.source, target_hint=edge.target))
+        # Recover a clearly arrowheaded branch that stops just short of an
+        # existing connector stroke (a common merge/junction rasterization gap).
+        infer_dangling_arrow_to_existing_edge(context, graph, dangling_fragments, mask.shape)
         # Be forgiving of a single likely omitted/faint branch-to-End connector,
         # but only when the decision's sibling output already establishes the
         # intended convergence. General reading-order edge guessing remains off.

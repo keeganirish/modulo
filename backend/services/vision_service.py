@@ -724,6 +724,65 @@ def read_best_words(image: np.ndarray, context: PipelineContext, origin: tuple[i
     return (text, words, plausible) if return_candidates else (text, words)
 
 
+def _reconcile_low_confidence_comparison_thresholds(nodes: list[Node]) -> None:
+    """Resolve a narrow 0/1 OCR ambiguity using repeated expression structure.
+
+    This is deliberately review-preserving: only a low-confidence one-digit
+    operand is changed, only when another decision compares the same variable
+    with the opposite relational operator and a zero threshold. The original
+    OCR reading remains in the candidate list for user review.
+    """
+    pattern = re.compile(
+        r"^\s*if\s+([A-Za-z_]\w*)\s*(>=|>|<=|<)\s*([01])\s*$",
+        re.IGNORECASE,
+    )
+    parsed = []
+    for node in nodes:
+        if node.type != "decision":
+            continue
+        match = pattern.match(node.text or "")
+        if match:
+            variable, operator, operand = match.groups()
+            parsed.append((node, variable.casefold(), operator, operand))
+
+    opposite = {">": "<", "<": ">", ">=": "<=", "<=": ">="}
+    for node, variable, operator, operand in parsed:
+        if operand != "1" or node.confidence >= 0.82:
+            continue
+        corroborated = any(
+            other is not node
+            and other_variable == variable
+            and other_operator == opposite.get(operator)
+            and other_operand == "0"
+            and other.confidence >= 0.72
+            for other, other_variable, other_operator, other_operand in parsed
+        )
+        if not corroborated:
+            continue
+        original = node.text
+        corrected = re.sub(r"([<>]=?)\s*1\s*$", r"\g<1> 0", original)
+        if corrected == original:
+            continue
+        candidates = list(node.ocr_candidates or [])
+        if not any(item.get("text") == original for item in candidates):
+            candidates.insert(0, {
+                "text": original,
+                "reason": "original low-confidence OCR reading preserved",
+                "score": 0.0,
+                "confidence": round(float(node.confidence), 3),
+            })
+        if not any(item.get("text") == corrected for item in candidates):
+            candidates.insert(0, {
+                "text": corrected,
+                "reason": "comparison threshold corroborated by a matching opposite comparison",
+                "score": 0.0,
+                "confidence": round(float(node.confidence), 3),
+            })
+        node.text = corrected
+        node.ocr_candidates = candidates[:8]
+        node.flags.append("CONTEXT_CORRECTED_OCR")
+
+
 class VisionService:
     name = "vision"
 
@@ -843,6 +902,7 @@ class VisionService:
                 context.diagnose("error", code, "OCR could not finish reading the diagram.", "Check the OCR language installation and try a smaller, clearer export.")
             finally:
                 pytesseract.pytesseract.tesseract_cmd = previous
+        _reconcile_low_confidence_comparison_thresholds(context.elements)
         # Contour fills do not always cover the outer half of anti-aliased
         # outlines. Those leftover node borders are often larger components than
         # the real arrows and can be mistaken for connectors that run around a
