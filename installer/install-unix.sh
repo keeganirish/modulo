@@ -8,6 +8,15 @@ OS="$(uname -s)"
 if [ "$OS" = "Darwin" ]; then DEST="$HOME/Library/Application Support/Modulo"; else DEST="${XDG_DATA_HOME:-$HOME/.local/share}/Modulo"; fi
 APP="$DEST/app"; VENV="$DEST/venv"
 
+# Finder may launch a shell through Rosetta even when the installer was run
+# natively. Keep Python, the venv, and its compiled packages on one architecture.
+PY_ARCH_CMD=()
+VENV_ARCH="$(uname -m)"
+if [ "$OS" = "Darwin" ] && [ "$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = "1" ]; then
+  PY_ARCH_CMD=(/usr/bin/arch -arm64)
+  VENV_ARCH="arm64"
+fi
+
 step() { printf '\n\033[36m[%s/5] %s\033[0m\n' "$1" "$2"; }
 ok()   { printf '      \033[32m%s\033[0m\n' "$1"; }
 warn() { printf '      \033[33m%s\033[0m\n' "$1"; }
@@ -16,7 +25,7 @@ SUDO=""; if [ "$(id -u)" -ne 0 ] && have sudo; then SUDO="sudo"; fi
 
 [ -d "$SRC/backend" ] || { echo "Can't find the app files next to this installer. Extract the whole zip first."; exit 1; }
 
-py_ok() { "$1" -c 'import sys,venv; sys.exit(0 if (3,10)<=sys.version_info[:2]<=(3,13) else 1)' 2>/dev/null; }
+py_ok() { "${PY_ARCH_CMD[@]}" "$1" -c 'import sys,venv; sys.exit(0 if (3,10)<=sys.version_info[:2]<=(3,13) else 1)' 2>/dev/null; }
 find_python() {
   for c in python3.12 python3.11 python3.13 python3.10 python3 /opt/homebrew/bin/python3.12 /usr/local/bin/python3.12; do
     if have "$c" && py_ok "$c"; then command -v "$c"; return 0; fi
@@ -59,16 +68,25 @@ else
   PY="$(find_python)" || { echo "Could not install Python automatically. Install Python 3.12 from python.org and re-run."; exit 1; }
 fi
 # Debian/Ubuntu ship venv separately
-if ! "$PY" -c 'import ensurepip' 2>/dev/null; then pkg_install python3-venv || true; fi
+if ! "${PY_ARCH_CMD[@]}" "$PY" -c 'import ensurepip' 2>/dev/null; then pkg_install python3-venv || true; fi
 
 step 3 "Installing Modulo packages (this can take a few minutes)"
-[ -x "$VENV/bin/python" ] || "$PY" -m venv "$VENV"
-"$VENV/bin/python" -m pip install --disable-pip-version-check --upgrade pip
-"$VENV/bin/python" -m pip install --disable-pip-version-check -r "$APP/requirements.txt"
-if [ "$OS" = "Darwin" ]; then   # native window; falls back to the browser if it fails
-  "$VENV/bin/python" -m pip install --disable-pip-version-check "pywebview>=5.0" || warn "Native window unavailable - Modulo will open in your browser."
+if [ -f "$VENV/.modulo-arch" ] && [ "$(cat "$VENV/.modulo-arch")" != "$VENV_ARCH" ]; then
+  warn "Existing environment uses the wrong CPU architecture - rebuilding it."
+  rm -rf "$VENV"
+elif [ -d "$VENV" ] && [ ! -f "$VENV/.modulo-arch" ]; then
+  warn "Existing environment has no architecture marker - rebuilding it."
+  rm -rf "$VENV"
 fi
-"$VENV/bin/python" -c 'import flask, waitress, cv2, pymupdf, pytesseract, networkx, numpy, PIL; print("      Packages OK")'
+[ -x "$VENV/bin/python" ] || "${PY_ARCH_CMD[@]}" "$PY" -m venv "$VENV"
+printf '%s\n' "$VENV_ARCH" > "$VENV/.modulo-arch"
+run_python() { "${PY_ARCH_CMD[@]}" "$VENV/bin/python" "$@"; }
+run_python -m pip install --disable-pip-version-check --upgrade pip
+run_python -m pip install --disable-pip-version-check -r "$APP/requirements.txt"
+if [ "$OS" = "Darwin" ]; then   # native window; falls back to the browser if it fails
+  run_python -m pip install --disable-pip-version-check "pywebview>=5.0" || warn "Native window unavailable - Modulo will open in your browser."
+fi
+run_python -c 'import flask, waitress, cv2, pymupdf, pytesseract, networkx, numpy, PIL; print("      Packages OK")'
 
 step 4 "Checking for Tesseract OCR"
 if have tesseract || [ -x /opt/homebrew/bin/tesseract ] || [ -x /usr/local/bin/tesseract ]; then ok "Tesseract already installed"
@@ -88,7 +106,18 @@ cat > "$RUN" <<RUNEOF
 #!/usr/bin/env bash
 export PATH="/opt/homebrew/bin:/usr/local/bin:\$PATH"
 cd "$APP"
-exec "$VENV/bin/python" "$APP/modulo_launcher.py" >> "$DEST/modulo.log" 2>&1
+LOG="$DEST/modulo.log"
+ARCH_CMD=()
+if [ "\$(sysctl -n hw.optional.arm64 2>/dev/null || true)" = "1" ]; then
+  ARCH_CMD=(/usr/bin/arch -arm64)
+fi
+if ! "\${ARCH_CMD[@]}" "$VENV/bin/python" "$APP/modulo_launcher.py" >> "\$LOG" 2>&1; then
+  if command -v osascript >/dev/null 2>&1; then
+    osascript -e 'display dialog "Modulo could not start. The error was saved to modulo.log in Application Support/Modulo." with title "Modulo startup error" buttons {"Open log", "OK"} default button "Open log"' >/dev/null 2>&1 || true
+  fi
+  open -a TextEdit "\$LOG" >/dev/null 2>&1 || true
+  exit 1
+fi
 RUNEOF
 chmod +x "$RUN"
 

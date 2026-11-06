@@ -40,8 +40,7 @@ def create_app(settings: Settings | None = None) -> Flask:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'"
-        if request.path.startswith("/api/"):
-            response.headers["Cache-Control"] = "no-store"
+        response.headers["Cache-Control"] = "no-store"
         return response
 
     @app.errorhandler(RequestEntityTooLarge)

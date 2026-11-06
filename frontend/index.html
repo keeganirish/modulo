@@ -7,8 +7,8 @@
 <title>Modulo — Flowchart to code</title>
 <link rel="icon" type="image/svg+xml" href="/icons/modulo-m-icon.svg">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
-<link rel="stylesheet" href="/css/styles.css">
-<script type="module" src="/js/app.js">
+<link rel="stylesheet" href="/css/styles.css?v=flowchart-panel-3">
+<script type="module" src="/js/app.js?v=flowchart-panel-3">
 </script>
 </head>
 <body>
@@ -51,36 +51,25 @@
 </progress>
 </div>
 <section id="workspace" class="workspace" tabindex="-1" aria-label="Analysis workspace">
-<article class="panel diagram-panel">
+<article id="diagram-panel" class="panel diagram-panel" role="region" aria-labelledby="upload-heading" aria-describedby="drop-instruction">
 <header class="panel-heading">
 <div>
 <span class="panel-number">01</span>
-<h2>Flowchart</h2>
+<h2 id="upload-heading">Flowchart</h2>
 </div>
+<div class="panel-heading-actions">
+<button id="sample-button" class="button quiet" type="button">Try a sample</button>
+<button id="reset-button" class="button quiet" type="button" hidden>Reset</button>
 <span id="node-count" class="panel-badge">SOURCE</span>
+</div>
 </header>
-<div class="panel-upload" aria-labelledby="upload-heading">
-<div id="drop-zone" class="drop-zone">
-<div class="upload-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" role="img"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-<div class="upload-copy">
-<h2 id="upload-heading">Bring your own flowchart</h2>
-<p id="file-description">Drop a PNG, JPG, SVG, or single-page PDF · Up to 10 MB</p>
-<p id="file-error" class="error-text" role="alert"></p>
-</div>
 <input id="file-input" type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="sr-only" aria-label="Choose flowchart">
-<button id="choose-button" class="button">Choose flowchart</button>
-</div>
-<div class="upload-actions">
-<button id="sample-button" class="button quiet">Try a sample</button>
-<button id="analyze-button" class="button primary" disabled>Analyze flowchart →</button>
-<button id="cancel-button" class="button" hidden>Cancel request</button>
-</div>
-</div>
 <div id="diagram-empty" class="empty-state">
-<span class="empty-shape" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="8" y="12" width="32" height="24" rx="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M24 36v6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>
-<h3>Your diagram belongs here</h3>
-<p>Drop or choose a flowchart image here. Digital exports are easiest to read; photographs and hand-drawn diagrams are supported with a higher risk of OCR or shape errors.</p>
-<button id="empty-choose" class="button quiet">Choose a flowchart →</button>
+<span class="upload-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" role="img"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+<h3>Bring your own flowchart</h3>
+<p id="drop-instruction">Drop a PNG, JPG, SVG, or single-page PDF anywhere in this panel, or choose a file below. Digital exports are easiest to read; photographs and hand-drawn diagrams are supported with a higher risk of OCR or shape errors.</p>
+<p id="file-error" class="error-text" role="alert"></p>
+<button id="choose-button" class="button" type="button">Choose a flowchart</button>
 </div>
 <div id="diagram-scroll" class="diagram-scroll" hidden>
 <div id="diagram-frame" class="diagram-frame">
@@ -89,6 +78,10 @@
 <svg id="diagram-overlay" xmlns="http://www.w3.org/2000/svg" aria-label="Recognized shapes and arrows">
 </svg>
 </div>
+</div>
+<div class="upload-actions">
+<button id="analyze-button" class="button primary" type="button" disabled>Analyze flowchart →</button>
+<button id="cancel-button" class="button" type="button" hidden>Cancel request</button>
 </div>
 <footer class="panel-footer">After analysis, hover or focus a recognized shape to inspect it; click to pin its matching pseudocode and Python lines.</footer>
 </article>

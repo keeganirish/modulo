@@ -9,6 +9,15 @@ MODULO - ONE-CLICK INSTALL
    packages, and Tesseract OCR, then puts a "Modulo" icon on your desktop and
    starts the app.
 
+macOS first run:
+- If macOS says the installer or Modulo.app is from an unidentified developer,
+  right-click it, choose Open, and confirm Open. This is required because the
+  app is not code-signed or notarized.
+- On Apple Silicon, the installer and desktop launcher force Python to run as
+  arm64 so compiled packages such as NumPy and OpenCV use the same architecture.
+- If the app cannot start, a startup dialog opens the log at
+  ~/Library/Application Support/Modulo/modulo.log.
+
 You only do this once. Afterwards just double-click the Modulo desktop icon.
 You may see one Windows permission prompt (UAC) while Tesseract installs.
 

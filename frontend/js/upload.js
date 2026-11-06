@@ -9,19 +9,38 @@ export function validateFile(file, maxMB = MAX_UPLOAD_MB) {
 }
 export function bindUpload(onSelect) {
   const input = document.getElementById('file-input');
-  const zone = document.getElementById('drop-zone');
-  for (const id of ['choose-button', 'empty-choose']) document.getElementById(id).addEventListener('click', event => { event.stopPropagation(); input.click(); });
-  zone.setAttribute('role', 'button');
-  zone.setAttribute('tabindex', '0');
-  zone.setAttribute('aria-label', 'Drop a flowchart here or choose a file');
-  zone.addEventListener('click', event => { if (!event.target.closest('button, input')) input.click(); });
-  zone.addEventListener('keydown', event => { if ((event.key === 'Enter' || event.key === ' ') && !event.target.closest('button')) { event.preventDefault(); input.click(); } });
-  input.addEventListener('change', () => { if (input.files[0]) onSelect(input.files[0]); });
-  zone.addEventListener('dragover', event => { event.preventDefault(); zone.classList.add('dragging'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
-  zone.addEventListener('drop', event => {
-    event.preventDefault(); zone.classList.remove('dragging');
-    if (event.dataTransfer.files.length !== 1) { document.getElementById('file-error').textContent = 'Choose exactly one flowchart at a time.'; return; }
+  const panel = document.getElementById('diagram-panel');
+  const choose = document.getElementById('choose-button');
+  let dragDepth = 0;
+
+  choose.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => {
+    if (input.files[0]) onSelect(input.files[0]);
+  });
+
+  panel.addEventListener('dragenter', event => {
+    event.preventDefault();
+    dragDepth += 1;
+    panel.classList.add('dragging');
+  });
+  panel.addEventListener('dragover', event => {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    panel.classList.add('dragging');
+  });
+  panel.addEventListener('dragleave', event => {
+    event.preventDefault();
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) panel.classList.remove('dragging');
+  });
+  panel.addEventListener('drop', event => {
+    event.preventDefault();
+    dragDepth = 0;
+    panel.classList.remove('dragging');
+    if (event.dataTransfer.files.length !== 1) {
+      document.getElementById('file-error').textContent = 'Choose exactly one flowchart at a time.';
+      return;
+    }
     onSelect(event.dataTransfer.files[0]);
   });
 }
