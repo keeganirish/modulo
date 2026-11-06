@@ -393,6 +393,14 @@ def _candidate_score(text: str, words: list[OCRWord], shape_type: str = "unknown
         score -= (len(cleaned) - 18) * .04
     if shape_type == "decision" and any(op in cleaned for op in ("==", "!=", "<=", ">=", "%")):
         score += .15
+    # A syntactically coherent reading should beat similarly confident OCR
+    # debris, but this is a ranking hint rather than a hard validity filter.
+    score += _syntax_plausibility(cleaned, shape_type)
+    if shape_type in {"decision", "iteration"} and re.search(
+            r"(?:==|!=|<=|>=|<|>)\s*[0-9]+(?:\b|$)", cleaned):
+        # In a comparison operand, a clean numeric literal is a more likely
+        # OCR reading than an isolated O/l glyph interpreted as a variable.
+        score += .65
     if shape_type in {"process", "output", "unknown"} and re.match(r"^print(?:\s|[:(])", cleaned, re.IGNORECASE):
         score += .45
         # Prefer a candidate whose common words are already coherent over its
@@ -441,6 +449,135 @@ def _repair_common_ocr_words(text: str) -> str:
     return re.sub(r"[^\W_]+(?:['’][^\W_]*)?", fix, text, flags=re.UNICODE)
 
 
+def _repair_programming_ocr(text: str, shape_type: str) -> list[str]:
+    """Generate bounded OCR-confusion candidates for programming-like labels.
+
+    This deliberately proposes alternatives instead of editing source text in
+    place. Character substitutions are restricted to unmistakable contexts
+    (for example O/0 in a numeric comparison operand), while syntax scoring
+    decides whether a proposal is more plausible than the raw OCR reading.
+    """
+    source = " ".join(text.split()).translate(str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'"}))
+    source = re.sub(r"^[\s/|\\]+", "", source).strip()
+    proposals: list[str] = []
+    trademark_cleaned = re.sub(r"™\s*[A-Za-z]?\b", "", source).strip()
+    if trademark_cleaned != source:
+        proposals.append(trademark_cleaned)
+    # If OCR loses only the closing quote of a print/output literal, restore it
+    # as a candidate. The original unbalanced reading remains available.
+    for candidate in (source, trademark_cleaned):
+        quoted = re.match(r"^(print|output|display|show)\s+(['\"])(.*)$",
+                          candidate, flags=re.IGNORECASE)
+        if quoted and candidate.count(quoted.group(2)) % 2:
+            proposals.append(candidate + quoted.group(2))
+
+    # Instruction verbs are a small, high-value vocabulary. Recover a damaged
+    # leading verb only when the remainder of the line has statement-like form.
+    if shape_type in {"process", "output", "input", "data", "unknown"}:
+        match = re.match(r"^([A-Za-z]{3,8})(?=\s+['\"]|[\(])(.*)$", source)
+        if match:
+            token, remainder = match.group(1), match.group(2)
+            for expected in ("print", "input", "read", "enter", "output", "display", "show"):
+                if token.casefold() != expected and difflib.SequenceMatcher(
+                        None, token.casefold(), expected).ratio() >= .70:
+                    proposals.append(expected.capitalize() + remainder)
+                    break
+        # A one-character OCR speck between print and a quoted literal is
+        # usually detached from the statement, not part of its meaning.
+        cleaned = re.sub(r"^(print)\s+[A-Za-z]\s+(?=['\"])", r"\1 ", source, flags=re.IGNORECASE)
+        if cleaned != source:
+            proposals.append(cleaned)
+        # Discard OCR debris after a balanced quoted output literal.
+        quoted = re.match(r"^(print|output|display|show)\s+(['\"].*?['\"])(?:\s+.*|\s*[\]})]+)?$",
+                          source, flags=re.IGNORECASE)
+        if quoted:
+            cleaned = quoted.group(1) + " " + quoted.group(2)
+            if cleaned != source:
+                proposals.append(cleaned)
+
+    # OCR occasionally mistakes a narrow leading glyph for I/1 before a known
+    # instruction. Drop it only when the following token is an instruction verb.
+    if shape_type in {"process", "output", "input", "data", "unknown"}:
+        cleaned = re.sub(r"^(?:[A-Za-z]|1)\s+(?=(?:print|output|display|show|input|read|enter)\b)",
+                         "", source, flags=re.IGNORECASE)
+        if cleaned != source:
+            proposals.append(cleaned)
+
+    # Missing spaces after control-flow keywords are common at small sizes.
+    keyword_pattern = r"^(if|while|for|print|input|return)(?=[A-Za-z_])"
+    if shape_type == "decision":
+        spaced = re.sub(keyword_pattern, r"\1 ", source, flags=re.IGNORECASE)
+        if spaced != source:
+            proposals.append(spaced)
+    elif shape_type == "iteration":
+        spaced = re.sub(r"^(while|for)(?=[A-Za-z_])", r"\1 ", source, flags=re.IGNORECASE)
+        if spaced != source:
+            proposals.append(spaced)
+
+    # OCR often reads zero as O/o and one as I/l. Correct only a whole token
+    # occupying a numeric operand position; never rewrite ordinary identifiers.
+    if shape_type in {"decision", "iteration", "process", "output", "unknown"}:
+        operator = r"(==|!=|<=|>=|<|>|=)"
+        numeric = re.sub(
+            operator + r"\s*([Oo]+)(?=$|[)\],:])",
+            lambda m: m.group(1) + " 0", source)
+        numeric = re.sub(
+            operator + r"\s*([Il|1]+)(?=$|[)\],:])",
+            lambda m: m.group(1) + " 1", numeric)
+        if numeric != source:
+            proposals.append(numeric)
+
+    # A fused `ifnum`/`whilenum` often occurs because OCR drops a word gap.
+    # Split only the known control keyword prefix; variable spelling is kept.
+    if shape_type == "decision":
+        fused = re.sub(r"^(if)([A-Za-z_][A-Za-z0-9_]*)", r"\1 \2", source, flags=re.IGNORECASE)
+        if fused != source:
+            proposals.append(fused)
+        # In small sans-serif text, the two-stroke `if` can collapse into F.
+        # Treat it as a candidate only at the beginning of a decision label.
+        clipped = re.sub(r"^[Ff]([A-Za-z_][A-Za-z0-9_]*)", r"if \1", source)
+        if clipped != source:
+            proposals.append(clipped)
+
+    # Normalize punctuation/spacing in comparison operators as separate
+    # candidates so the raw OCR text remains available for user review.
+    if shape_type in {"decision", "iteration"}:
+        normalized = _normalize_comparison_spacing(source, "decision")
+        if normalized != source:
+            proposals.append(normalized)
+
+    return list(dict.fromkeys(item for item in proposals if item and item != source))
+
+
+def _syntax_plausibility(text: str, shape_type: str) -> float:
+    """Return a modest score bonus for valid supported-looking syntax."""
+    candidate = text.strip()
+    if not candidate:
+        return 0.0
+    try:
+        if shape_type == "decision":
+            expression = re.sub(r"^if\s+", "", candidate, flags=re.IGNORECASE).rstrip(": ")
+            ast.parse(expression, mode="eval")
+            return 1.65 if re.match(r"^if\s+", candidate, re.IGNORECASE) else 1.15
+        if shape_type == "iteration":
+            if candidate.upper().startswith("WHILE "):
+                ast.parse(candidate.split(None, 1)[1], mode="eval")
+                return 1.10
+            if re.match(r"^FOR\s+", candidate, re.IGNORECASE):
+                return .65
+        if shape_type in {"process", "output", "input", "data", "unknown"}:
+            if re.match(r"^(?:print|Print)\s+['\"].*['\"]\s*[.,;:!?]*$", candidate):
+                return 1.25  # clean quoted flowchart output, not Python call syntax
+            if re.match(r"^Output\s+", candidate, re.IGNORECASE):
+                ast.parse(re.split(r"\s+", candidate, maxsplit=1)[1], mode="eval")
+                return .9
+            ast.parse(candidate, mode="exec")
+            return .85
+    except (SyntaxError, ValueError, RecursionError):
+        return 0.0
+    return 0.0
+
+
 def _repair_ocr_text(text: str, shape_type: str) -> list[str]:
     """Produce small, reviewable OCR repairs without silently rewriting meaning.
 
@@ -448,7 +585,12 @@ def _repair_ocr_text(text: str, shape_type: str) -> list[str]:
     below prefers a repaired decision only when it forms a valid expression.
     """
     source = " ".join(text.split())
-    results = []
+    results = _repair_programming_ocr(source, shape_type)
+    # Compose independent, low-risk repairs (for example a missing keyword
+    # space plus O/0 confusion) while keeping the number of variants bounded.
+    for first_pass in list(results):
+        results.extend(_repair_programming_ocr(first_pass, shape_type))
+    results = list(dict.fromkeys(item for item in results if item != source))[:12]
     if shape_type == "decision":
         # OCR commonly inserts a stray dot/colon after the decision keyword
         # ("If . value > 0"). Remove only punctuation immediately following
@@ -510,6 +652,16 @@ def select_ocr_candidate(candidates: list[tuple[str, list[OCRWord]]], shape_type
     best_score, best_text, best_words = ranked[0]
     plausible = []
     seen = set()
+    # Always retain the strongest unmodified OCR observation for provenance,
+    # even when a syntax-aware repair wins the displayed reading.
+    original_text, original_words = candidates[0]
+    original_text = " ".join(original_text.split())
+    if original_text:
+        plausible.append({"text": original_text, "score": round(
+            _candidate_score(original_text, original_words, shape_type), 3),
+            "confidence": round(sum(w.confidence for w in original_words) / len(original_words), 3)
+            if original_words else 0.0})
+        seen.add(original_text)
     low_confidence = not best_words or sum(w.confidence for w in best_words) / len(best_words) < .72
     for score, text, words in ranked:
         normalized = " ".join(text.split())
