@@ -198,16 +198,48 @@ def bridge_aligned_connector_gaps(mask: np.ndarray, nodes: list[Node]) -> np.nda
                 if 8 < gap <= max_gap:
                     left_ys = np.where(labels[:, ax + aw - 1] == a[0])[0]
                     right_ys = np.where(labels[:, bx] == b[0])[0]
-                    if (0 < len(left_ys) <= max_endpoint_span and
-                            0 < len(right_ys) <= max_endpoint_span):
+                    # An arrowhead widens at its tip, so its first image
+                    # column can contain more pixels than a normal shaft.
+                    # Permit one broad endpoint only when the opposite endpoint
+                    # is a thin stroke and their centerlines remain aligned.
+                    left_thin = 0 < len(left_ys) <= max_endpoint_span
+                    right_thin = 0 < len(right_ys) <= max_endpoint_span
+                    left_head = max_endpoint_span < len(left_ys) <= 50
+                    right_head = max_endpoint_span < len(right_ys) <= 50
+                    if ((left_thin and (right_thin or right_head)) or
+                            (right_thin and left_head)):
                         left_y = float(np.median(left_ys))
                         right_y = float(np.median(right_ys))
-                        if abs(left_y - right_y) <= x_tolerance:
+                        if abs(left_y - right_y) <= max(12, x_tolerance * 0.5):
                             start = (ax + aw - 1, int(round(left_y)))
                             end = (bx, int(round(right_y)))
                             if not crosses_node(start, end):
                                 thickness = max(3, min(9, int(round(
-                                    (len(left_ys) + len(right_ys)) / 2
+                                    min(len(left_ys), len(right_ys))
+                                ))))
+                                cv2.line(result, start, end, 255, thickness)
+            elif ax >= bx + bw:
+                # Connected-component IDs are assigned in scan order, not
+                # left-to-right order. A broad arrowhead can begin higher than
+                # its shaft and therefore receive the earlier component ID.
+                gap = ax - (bx + bw)
+                if 8 < gap <= max_gap:
+                    left_ys = np.where(labels[:, bx + bw - 1] == b[0])[0]
+                    right_ys = np.where(labels[:, ax] == a[0])[0]
+                    left_thin = 0 < len(left_ys) <= max_endpoint_span
+                    right_thin = 0 < len(right_ys) <= max_endpoint_span
+                    left_head = max_endpoint_span < len(left_ys) <= 50
+                    right_head = max_endpoint_span < len(right_ys) <= 50
+                    if ((left_thin and (right_thin or right_head)) or
+                            (right_thin and left_head)):
+                        left_y = float(np.median(left_ys))
+                        right_y = float(np.median(right_ys))
+                        if abs(left_y - right_y) <= max(12, x_tolerance * 0.5):
+                            start = (bx + bw - 1, int(round(left_y)))
+                            end = (ax, int(round(right_y)))
+                            if not crosses_node(start, end):
+                                thickness = max(3, min(9, int(round(
+                                    min(len(left_ys), len(right_ys))
                                 ))))
                                 cv2.line(result, start, end, 255, thickness)
     return result
@@ -425,6 +457,39 @@ def infer_high_confidence_missing_edges(context: PipelineContext, graph: FlowGra
     return inferred_count
 
 
+
+
+def suppress_node_outline_artifacts(mask: np.ndarray, nodes: list[Node]) -> np.ndarray:
+    """Remove residual node-border ink before connector component analysis.
+
+    Filled-node contours do not always include the outer half of thick,
+    anti-aliased outlines. Those residual borders can join otherwise separate
+    arrows into one giant component. Erase a small, image-scaled band around
+    each recognized polygon; connector endpoints are recovered by the bounded
+    contact radius in GraphService, while the original context mask is retained
+    for review and high-confidence recovery.
+    """
+    if not nodes:
+        return mask
+    height, width = mask.shape[:2]
+    margin = max(8, min(36, int(round(width * 0.01))))
+    kernel_size = margin * 2 + 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+    cleaned = mask.copy()
+    for node in nodes:
+        bx, by, bw, bh = node.bbox.to_list()
+        x0, y0 = max(0, bx - margin - 2), max(0, by - margin - 2)
+        x1, y1 = min(width, bx + bw + margin + 3), min(height, by + bh + margin + 3)
+        region = np.zeros((y1 - y0, x1 - x0), np.uint8)
+        polygon = np.asarray(
+            node.polygon or [(bx, by), (bx + bw, by), (bx + bw, by + bh), (bx, by + bh)],
+            np.int32,
+        ) - np.array([x0, y0])
+        cv2.fillPoly(region, [polygon], 255)
+        region = cv2.dilate(region, kernel)
+        cleaned[y0:y1, x0:x1][region > 0] = 0
+    return cleaned
+
 class GraphService:
     name = "graph"
 
@@ -440,6 +505,7 @@ class GraphService:
         # neighboring node outline or to a second branch, producing a fabricated
         # path that follows unrelated borders. Keep connected-component topology
         # as close to the observed pixels as possible.
+        mask = suppress_node_outline_artifacts(mask, graph.nodes)
         mask = bridge_aligned_connector_gaps(mask, graph.nodes)
         count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
         components = sorted(range(1, count), key=lambda index: (int(stats[index, cv2.CC_STAT_TOP]), int(stats[index, cv2.CC_STAT_LEFT])))
@@ -455,9 +521,27 @@ class GraphService:
             # image-scaled attachment radius, bounded by the configured minimum.
             attach_distance = max(
                 context.settings.ARROW_ATTACH_DISTANCE,
-                int(round(mask.shape[1] * 0.018)),
+                int(round(mask.shape[1] * 0.05)),
             )
             ports = contacts(points, graph.nodes, mask.shape, attach_distance)
+            # Node-border cleanup can leave a visible connector tip just beyond
+            # the normal attachment band. Expand only when the observed stroke
+            # currently touches exactly one node and the second contact is a
+            # Start/End terminal. This narrowly recovers terminal connectors
+            # without broadening ordinary branch matching or joining nearby
+            # decision branches by proximity alone.
+            if len({port.node.id for port in ports}) == 1:
+                expanded_distance = max(attach_distance, int(round(mask.shape[1] * 0.035)))
+                if expanded_distance > attach_distance:
+                    expanded_ports = contacts(points, graph.nodes, mask.shape, expanded_distance)
+                    expanded_nodes = {port.node.id: port.node for port in expanded_ports}
+                    original_ids = {port.node.id for port in ports}
+                    terminal_nodes = [node for node in expanded_nodes.values()
+                                      if node.type == "terminal"
+                                      and node.text.strip().casefold() in {"start", "end"}]
+                    if (len(expanded_nodes) == 2 and len(terminal_nodes) == 1
+                            and set(expanded_nodes) != original_ids):
+                        ports = expanded_ports
             ids = list(dict.fromkeys(port.node.id for port in ports))
             sources, targets = [port for port in ports if not port.head], [port for port in ports if port.head]
 
@@ -522,9 +606,36 @@ class GraphService:
                     target = first if first.node.type == "decision" else second
                     inferred = (source, target)
                 elif role_pair == {"decision", "output"}:
-                    source = first if first.node.type == "decision" else second
-                    target = first if first.node.type == "output" else second
-                    inferred = (source, target)
+                    decision = first if first.node.type == "decision" else second
+                    output = first if first.node.type == "output" else second
+                    # A lateral branch leaves the decision; a vertically
+                    # aligned output above a decision is the preceding step.
+                    if abs(output.node.bbox.center[0] - decision.node.bbox.center[0]) > 0.35 * max(output.node.bbox.width, decision.node.bbox.width):
+                        inferred = (decision, output)
+                    elif output.node.bbox.center[1] < decision.node.bbox.center[1]:
+                        inferred = (output, decision)
+                    else:
+                        inferred = (decision, output)
+                elif role_pair == {"output", "terminal"}:
+                    output = first if first.node.type == "output" else second
+                    terminal = first if first.node.type == "terminal" else second
+                    inferred = (output, terminal) if terminal.text.strip().casefold() == "end" else (terminal, output)
+                elif role_pair == {"output", "decision"}:
+                    output = first if first.node.type == "output" else second
+                    decision = first if first.node.type == "decision" else second
+                    inferred = (output, decision) if output.node.bbox.center[1] < decision.node.bbox.center[1] else (decision, output)
+                elif role_pair in ({"decision", "decision"}, {"output", "output"}, {"process", "process"}):
+                    # With the arrowhead partially covered by a filled node,
+                    # a clearly vertical connector between aligned nodes has a
+                    # strong top-to-bottom direction cue. Do not generalize
+                    # this to horizontal same-role pairs, which are ambiguous.
+                    upper, lower = sorted(
+                        (first, second), key=lambda port: port.node.bbox.center[1]
+                    )
+                    vertical_gap = lower.node.bbox.center[1] - upper.node.bbox.center[1]
+                    horizontal_gap = abs(lower.node.bbox.center[0] - upper.node.bbox.center[0])
+                    if vertical_gap > 0.65 * max(upper.node.bbox.height, lower.node.bbox.height):
+                        inferred = (upper, lower)
                 if inferred is not None:
                     source, target = inferred
                     path = stroke_path(points, source.point, target.point)
@@ -653,10 +764,14 @@ class GraphService:
                             abs(target_nodes[edge.target].bbox.center[0] - center_x)]
                 horizontal = [edge for edge, x in positions if edge not in vertical]
                 if len(vertical) == len(horizontal) == 1:
-                    vertical[0].label, horizontal[0].label = "True", "False"
+                    horizontal_target = target_nodes.get(horizontal[0].target)
+                    if horizontal_target and horizontal_target.bbox.center[0] > center_x:
+                        horizontal[0].label, vertical[0].label = "True", "False"
+                    else:
+                        vertical[0].label, horizontal[0].label = "True", "False"
                     context.diagnose(
                         "warning", "INFERRED_BRANCH_LABELS",
-                        "True/False labels were inferred from a clear vertical-versus-sideways decision split because label OCR was unavailable.",
+                        "True/False labels were inferred from the decision's vertical-versus-sideways split because label OCR was unavailable.",
                         "Confirm the inferred branch labels during review.",
                         [node.id, vertical[0].id, horizontal[0].id],
                     )
