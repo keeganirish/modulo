@@ -5,7 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="description" content="Analyze your flowchart locally with deterministic vision, OCR, and graph validation.">
 <title>Modulo — Flowchart to code</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='10' fill='%232f6fbd'/%3E%3Cpath d='M10 27V13l10 10 10-10v14' fill='none' stroke='white' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="icon" type="image/svg+xml" href="/icons/modulo-m-icon.svg">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/css/styles.css">
 <script type="module" src="/js/app.js">
 </script>
@@ -14,10 +15,8 @@
 <a class="skip-link" href="#workspace">Skip to workspace</a>
 <header class="header">
 <a class="brand" href="/" aria-label="Modulo home">
-<span class="brand-mark" aria-hidden="true">M<span>↗</span>
-</span>
-<span>modulo<span class="brand-caption">FLOWCHART TO CODE</span>
-</span>
+<img class="brand-logo brand-logo-dark" src="/icons/modulo-wordmark-light.svg" alt="Modulo">
+<img class="brand-logo brand-logo-light" src="/icons/modulo-wordmark.svg" alt="" aria-hidden="true">
 </a>
 <div class="header-tools">
 <button id="help-button" class="button quiet">Diagram guide</button>
@@ -43,24 +42,6 @@
 <span>04</span> Generate Python
 </li>
 </ol>
-<section class="upload-bar" aria-labelledby="upload-heading">
-<div id="drop-zone" class="drop-zone">
-<div class="upload-symbol" aria-hidden="true">↥</div>
-<div>
-<h2 id="upload-heading">Bring your own flowchart</h2>
-<p id="file-description">Drop a PNG, JPG, SVG, or single-page PDF · Up to 10 MB</p>
-<p id="file-error" class="error-text" role="alert">
-</p>
-</div>
-<input id="file-input" type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="sr-only" aria-label="Choose flowchart">
-<button id="choose-button" class="button">Choose flowchart</button>
-</div>
-<div class="upload-actions">
-<button id="sample-button" class="button quiet">Try a sample</button>
-<button id="analyze-button" class="button primary" disabled>Analyze flowchart →</button>
-<button id="cancel-button" class="button" hidden>Cancel request</button>
-</div>
-</section>
 <div class="status-row">
 <p id="status" role="status" aria-live="polite">Choose a file to begin. Your diagram stays on this server.</p>
 </div>
@@ -78,9 +59,25 @@
 </div>
 <span id="node-count" class="panel-badge">SOURCE</span>
 </header>
+<div class="panel-upload" aria-labelledby="upload-heading">
+<div id="drop-zone" class="drop-zone">
+<div class="upload-symbol" aria-hidden="true"><svg viewBox="0 0 24 24" role="img"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 14v5h14v-5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+<div class="upload-copy">
+<h2 id="upload-heading">Bring your own flowchart</h2>
+<p id="file-description">Drop a PNG, JPG, SVG, or single-page PDF · Up to 10 MB</p>
+<p id="file-error" class="error-text" role="alert"></p>
+</div>
+<input id="file-input" type="file" accept=".png,.jpg,.jpeg,.svg,.pdf" class="sr-only" aria-label="Choose flowchart">
+<button id="choose-button" class="button">Choose flowchart</button>
+</div>
+<div class="upload-actions">
+<button id="sample-button" class="button quiet">Try a sample</button>
+<button id="analyze-button" class="button primary" disabled>Analyze flowchart →</button>
+<button id="cancel-button" class="button" hidden>Cancel request</button>
+</div>
+</div>
 <div id="diagram-empty" class="empty-state">
-<span class="empty-shape" aria-hidden="true">
-</span>
+<span class="empty-shape" aria-hidden="true"><svg viewBox="0 0 48 48"><rect x="8" y="12" width="32" height="24" rx="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M24 36v6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span>
 <h3>Your diagram belongs here</h3>
 <p>Drop or choose a flowchart image here. Digital exports are easiest to read; photographs and hand-drawn diagrams are supported with a higher risk of OCR or shape errors.</p>
 <button id="empty-choose" class="button quiet">Choose a flowchart →</button>
@@ -88,6 +85,7 @@
 <div id="diagram-scroll" class="diagram-scroll" hidden>
 <div id="diagram-frame" class="diagram-frame">
 <img id="diagram-image" alt="Imported flowchart">
+<iframe id="diagram-pdf" title="Imported PDF flowchart" hidden></iframe>
 <svg id="diagram-overlay" xmlns="http://www.w3.org/2000/svg" aria-label="Recognized shapes and arrows">
 </svg>
 </div>
@@ -103,7 +101,7 @@
 <span id="pseudo-mode" class="panel-badge">READ ONLY</span>
 </header>
 <div id="pseudo-empty" class="empty-state">
-<span class="empty-lines" aria-hidden="true">≡</span>
+<span class="empty-lines" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="M10 15h28M10 24h28M10 33h20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg></span>
 <h3>Review the recovered logic</h3>
 <p>Modulo renders this read-only explanation from the validated graph before it generates Python.</p>
 </div>
@@ -127,13 +125,13 @@
 <article class="panel">
 <header class="panel-heading">
 <div>
-<span class="panel-number">04</span>
+<span class="panel-number">03</span>
 <h2>Python</h2>
 </div>
 <span class="panel-badge">AFTER APPROVAL</span>
 </header>
 <div id="code-empty" class="empty-state">
-<span class="empty-code" aria-hidden="true">&lt;/&gt;</span>
+<span class="empty-code" aria-hidden="true"><svg viewBox="0 0 48 48"><path d="m18 14-10 10 10 10M30 14l10 10-10 10M27 10 21 38" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
 <h3>Nothing generated without you</h3>
 <p>Approve the read-only pseudocode first. Generated text is parsed and syntax-checked, never executed.</p>
 </div>
@@ -152,6 +150,7 @@
 </div>
 <span id="diagnostics-count" class="panel-badge">NO ANALYSIS YET</span>
 </header>
+<div id="recognition-score" class="recognition-score" hidden aria-live="polite"></div>
 <div id="diagnostics-list">
 </div>
 </section>
